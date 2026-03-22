@@ -1,0 +1,78 @@
+% main.tex
+% Estructura Principal - Manual Técnico ISO/IEC/IEEE 15289:2024 e IEEE 830
+
+\documentclass[11pt, a4paper, twoside]{report} 
+
+% Carga de configuraciones
+\input{config/01_packages}
+\input{config/03_fonts_colors}
+\input{config/02_layout}
+\input{config/04_macros}
+
+\begin{document}
+
+% ==========================================
+% PORTADA
+% ==========================================
+\include{sections/00_portada}
+
+% ==========================================
+% TABLA DE CONTENIDOS
+% ==========================================
+\clearpage
+\begingroup
+  \makeatletter \let\ps@plain\ps@empty \makeatother
+  \pagestyle{empty} 
+  \tableofcontents
+  \clearpage
+\endgroup
+
+\pagestyle{fancy}   
+\setcounter{page}{1} 
+
+% ==========================================
+% CONSISTENCIA Y TRAZABILIDAD (ISO 15289)
+% ==========================================
+\chapter*{Historial de Revisiones y Roles}
+\addcontentsline{toc}{chapter}{Historial de Revisiones y Roles}
+% Tabla de versiones, autores y roles (Ej. SME que validó la arquitectura).
+
+% ==========================================
+% 1. IDENTIFICACIÓN DEL SISTEMA
+% ==========================================
+\chapter{Identificación del Sistema}
+% Nombre del producto, versión técnica, stack tecnológico y dependencias base (Ej. Versión de OS, gestores de paquetes en Ubuntu, etc.).
+
+% ==========================================
+% 2. ARQUITECTURA DEL SISTEMA
+% ==========================================
+\chapter{Arquitectura del Sistema}
+% Diagramas de componentes (ej. Modelo C4), patrones de diseño (MVC, Microservicios).
+% Modelo de datos detallado (Diagramas Entidad-Relación).
+
+% ==========================================
+% 3. REQUERIMIENTOS DEL SISTEMA (IEEE 830)
+% ==========================================
+\chapter{Requerimientos del Sistema}
+% Interfaces externas (Hardware, Software, Red).
+% Atributos de calidad (Rendimiento, Seguridad, Disponibilidad).
+
+% ==========================================
+% 4. ESTRUCTURA DEL CÓDIGO
+% ==========================================
+\chapter{Estructura del Código}
+% Organización de directorios y módulos principales. Convenciones de codificación.
+
+% ==========================================
+% 5. APIS Y SERVICIOS
+% ==========================================
+\chapter{APIs y Servicios}
+% Documentación de endpoints, autenticación y formatos de respuesta.
+
+% ==========================================
+% 6. MANTENIMIENTO Y DIAGNÓSTICO
+% ==========================================
+\chapter{Mantenimiento y Diagnóstico}
+% Sistema de logs internos. Procedimientos de backup, restauración y rollback.
+
+\end{document}

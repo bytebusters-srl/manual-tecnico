@@ -1,0 +1,25 @@
+# Ignorar archivos generados por LaTeX y otros archivos temporales relacionados con la compilación del documento
+
+# 1. Ignorar la carpeta de compilación completa (El PDF y los temporales)
+build/
+
+# 2. Ignorar caché de inyección de código (generado por el paquete minted)
+_minted-*/
+*.pyg
+
+# 3. Archivos temporales clásicos de LaTeX
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.xml
+*.bcf
+
+# 4. Archivos basura del Sistema Operativo
+.DS_Store
+Thumbs.db

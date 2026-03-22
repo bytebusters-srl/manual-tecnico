@@ -1,0 +1,91 @@
+% 04_macros.tex
+% Componentes Especiales para Ingeniería (Estándar ISO 15289)
+
+% 1. Formato para Comandos en línea
+\newcommand{\comando}[1]{{\fontfamily{pcr}\fontsize{9}{10.8}\selectfont\colorbox{grisTecnico}{\texttt{#1}}}}
+
+% 2. COMPONENTES ESPECIALES DE INGENIERÍA
+
+% Nota: Consejos de productividad (Fondo azul claro, icono info)
+\newtcolorbox{AvisoNota}{
+    colback=bgNota,
+    colframe=bgNota!80!black, % Borde ligeramente más oscuro
+    boxrule=0.5pt,
+    leftrule=4pt,
+    arc=2pt,
+    title={\faInfoCircle\ \textbf{Nota}},
+    coltitle=black,
+    fonttitle=\sffamily,
+    attach title to upper=\quad
+}
+
+% Precaución: Evitar errores operacionales (Borde amarillo, texto negrita, sin fondo invasivo)
+\newtcolorbox{AvisoPrecaucion}{
+    colback=white,
+    colframe=colorAcento,
+    boxrule=1.5pt,
+    arc=2pt,
+    fontupper=\bfseries,
+    title={\faExclamationTriangle\ \textbf{Precaución}},
+    coltitle=black,
+    fonttitle=\sffamily,
+    attach title to upper=\par
+}
+
+% Advertencia: Prevenir pérdida de datos (Fondo rojo suave, icono peligro)
+\newtcolorbox{AvisoAdvertencia}{
+    colback=bgAdvertencia,
+    colframe=red!70!black,
+    boxrule=0.5pt,
+    leftrule=4pt,
+    arc=2pt,
+    title={\faRadiation\ \textbf{Advertencia}},
+    coltitle=black,
+    fonttitle=\sffamily,
+    attach title to upper=\par
+}
+
+
+% Nota Técnica: Dependencias o efectos secundarios (Borde azul, fondo blanco)
+\newtcolorbox{NotaTecnica}{
+    colback=white,
+    colframe=bordeNotaTecnica,
+    boxrule=1.2pt,
+    arc=2pt,
+    title={\faInfoCircle\ \textbf{Nota Técnica}},
+    coltitle=bordeNotaTecnica,
+    fonttitle=\sffamily,
+    attach title to upper=\par\vspace{0.2em}
+}
+
+% Alerta de Seguridad: Vulnerabilidades críticas (Fondo rojo)
+\newtcolorbox{AlertaSeguridad}{
+    colback=bgAdvertencia,
+    colframe=red!80!black,
+    boxrule=0.5pt,
+    leftrule=4pt,
+    arc=2pt,
+    title={\faShield*\ \textbf{Alerta de Seguridad}},
+    coltitle=black,
+    fonttitle=\sffamily,
+    attach title to upper=\par\vspace{0.2em}
+}
+
+% 3. Formato de Checklist de Deployment
+\newlist{checklist}{itemize}{1}
+\setlist[checklist]{label=$\square$, leftmargin=*}
+
+% 4. Entorno de Tabla para Diccionario de Datos / APIs
+\newenvironment{TablaAPI}{
+    \renewcommand{\arraystretch}{1.5}
+    \vspace{0.5cm}
+    \noindent
+    \tabularx{\textwidth}{|>{\ttfamily\color{colorPrimario}}l|l|X|>{\ttfamily\color{colorSecundario}}l|}
+    \hline
+    \rowcolor{headerTabla}
+    \sffamily\textbf{Campo / Parámetro} & \sffamily\textbf{Tipo de Dato} & \sffamily\textbf{Descripción} & \sffamily\textbf{Ejemplo} \\
+    \hline
+}{
+    \endtabularx
+    \vspace{0.5cm}
+}

@@ -1,0 +1,57 @@
+% 02_layout.tex
+% Geometría, Encabezados, Títulos y Metadatos PDF (ISO 15289)
+
+% 1. Configuración de Márgenes Exactos
+\geometry{
+    a4paper,
+    inner=3cm,       % Margen izquierdo para archivo físico
+    outer=2cm,       % Margen derecho
+    top=2.5cm,       % Distancia superior
+    bottom=2.5cm,    % Distancia inferior
+    includehead,     % El encabezado va dentro del margen
+    includefoot,     % El pie de página va dentro del margen
+    headheight=28pt, 
+    headsep=0.4cm,   
+    footskip=1.0cm   
+}
+\onehalfspacing      % Interlineado 1.5 para legibilidad en lectura larga
+
+% 2. Jerarquía de Títulos (Especificaciones de Diseño)
+% Títulos de Sección (Capítulos): Helvetica, 16 pt, Negrita, Color Corporativo
+\titleformat{\chapter}[hang]
+  {\sffamily\bfseries\fontsize{16}{19.2}\selectfont\color{colorPrimario}}
+  {\thechapter.}
+  {1em}{}
+\titlespacing*{\chapter}{0pt}{-20pt}{20pt}
+
+% Subtítulos: Helvetica, 14 pt, Negrita
+\titleformat{\section}[hang]
+  {\sffamily\bfseries\fontsize{14}{16.8}\selectfont\color{colorPrimario}}
+  {\thesection.}
+  {1em}{}
+
+% 3. Identidad Corporativa: Encabezado y Pie (Trazabilidad)
+\pagestyle{fancy}
+\fancyhf{} 
+
+% Encabezado: Logo (Izq) | Título Técnico y Estado (Der)
+\fancyhead[L]{\includegraphics[height=0.5cm, keepaspectratio]{assets/img/bytebusters/logo_horizontal.png}}
+\fancyhead[R]{\sffamily\footnotesize\textcolor{colorPrimario}{\textbf{Módulo Core | Estado: Aprobado}}}
+
+% Pie de Página: Versión e IP (Izq) | Paginación (Der)
+\fancyfoot[L]{\sffamily\footnotesize\textcolor{grisISO}{v2.1.3 | Confidencial - Byte Busters S.R.L.}}
+\fancyfoot[R]{\sffamily\footnotesize\textcolor{grisISO}{Página \thepage\ de \pageref{LastPage}}}
+
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{grisISO}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{grisISO}\leaders\hrule height \footrulewidth\hfill}}
+
+% 4. Configuración de Metadatos y Enlaces
+\hypersetup{
+    colorlinks=true,
+    linkcolor=colorPrimario,
+    urlcolor=colorPrimario,
+    pdftitle={Manual Técnico - Estándar ISO/IEC/IEEE 15289},
+    pdfauthor={Byte Busters S.R.L.}
+}

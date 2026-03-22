@@ -1,0 +1,35 @@
+{
+  // Define la carpeta de salida para los archivos generados por LaTeX
+  "latex-workshop.latex.outDir": "%DIR%/build",
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk",             // Nombre de la herramienta de compilación
+      "command": "latexmk",          // Comando para ejecutar la herramienta
+      "args": [
+        "-synctex=1",                // Habilita SyncTeX para sincronización entre el código fuente y el PDF
+        "-interaction=nonstopmode",  // Continúa la compilación incluso si hay errores
+        "-file-line-error",          // Muestra errores con formato de línea y archivo
+        "-pdf",                      // Indica que la salida debe ser un PDF
+        "-outdir=%OUTDIR%",          // Usa la carpeta de salida definida anteriormente (build)
+        "-shell-escape",             // Permite la ejecución de comandos externos (necesario para paquetes como minted)
+        "%DOC%"
+      ],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      // Define la compilación que utiliza la herramienta latexmk
+      "name": "Compilación Maestra (latexmk)",
+      "tools": [
+        "latexmk"                    // Especifica que utiliza la herramienta latexmk
+      ]
+    }
+  ],
+  // Configura la compilación automática para que se ejecute al guardar el archivo con Ctrl+S
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  // Mantiene limpios los subdirectorios de salida después de la compilación
+  "latex-workshop.latex.clean.subfolder.enabled": true,
+  // Abre el pdf generado en una nueva pestaña dentro de Visual Studio Code
+  "latex-workshop.view.pdf.viewer": "tab"
+}
