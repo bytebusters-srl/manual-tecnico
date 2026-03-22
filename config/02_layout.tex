@@ -34,9 +34,15 @@
 \pagestyle{fancy}
 \fancyhf{} 
 
-% Encabezado: Logo (Izq) | Título Técnico y Estado (Der)
+% Redefinimos las marcas para capturar solo el nombre limpio del capítulo/sección
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{#1}}
+
+% Encabezado: Logo (Izq) | Título Dinámico y Estado (Der)
 \fancyhead[L]{\includegraphics[height=0.5cm, keepaspectratio]{assets/img/bytebusters/logo_horizontal.png}}
-\fancyhead[R]{\sffamily\footnotesize\textcolor{colorPrimario}{\textbf{Módulo Core | Estado: Aprobado}}}
+
+% Aquí usamos \leftmark para inyectar automáticamente el nombre del capítulo actual
+\fancyhead[R]{\sffamily\footnotesize\textcolor{colorPrimario}{\textbf{\leftmark\ | Estado: Aprobado}}}
 
 % Pie de Página: Versión e IP (Izq) | Paginación (Der)
 \fancyfoot[L]{\sffamily\footnotesize\textcolor{grisISO}{v2.1.3 | Confidencial - Byte Busters S.R.L.}}
