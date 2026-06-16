@@ -32,6 +32,33 @@
 % Cajas de Diseño y Listas
 \usepackage[most]{tcolorbox} % Cajas visuales para notas técnicas y alertas
 \usepackage{enumitem}        % Personalización de viñetas para checklists
+\usepackage{multirow}        % Celdas combinadas en tablas (diccionario de datos)
+\usepackage{longtable}       % Tablas multipágina (diccionario de datos extenso)
+\usepackage{array}           % Columnas con formato avanzado
+
+% Diagramas Vectoriales Nativos (Modelo C4, DER, Secuencia, Flujos)
+\usepackage{tikz}
+\usetikzlibrary{
+    positioning,   % Posicionamiento relativo de nodos
+    shapes.geometric, % Rombos (decisiones), cilindros (BBDD)
+    shapes.symbols,
+    shapes.multipart,
+    arrows.meta,   % Puntas de flecha modernas
+    fit,           % Recuadros que envuelven grupos de nodos (límites de sistema)
+    calc,          % Cálculo de coordenadas
+    backgrounds,   % Capas de fondo para fronteras de contenedores
+    decorations.pathreplacing,
+    chains
+}
+
+% Bloques de Código Fuente (Java, SQL, TypeScript, YAML)
+\usepackage{listings}
+
+% Rutas y URLs largas con quiebre de línea automático (evita overfull en
+% direcciones, paquetes y rutas de archivo del tipo /api/v1/... o @/shared/...)
+\usepackage{seqsplit}      % Quiebre carácter a carácter de cadenas largas
+\usepackage{ragged2e}      % Justificado flexible para celdas estrechas
 
 % Navegación y Metadatos PDF
 \usepackage{hyperref}  % Generación de enlaces internos
+\usepackage{xurl}      % Quiebre de URLs en cualquier carácter (tras hyperref)

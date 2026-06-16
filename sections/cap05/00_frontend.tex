@@ -1,0 +1,46 @@
+% =============================================================================
+% CAPÍTULO 5 — DISEÑO DETALLADO DEL FRONTEND (ethoshubF)
+% Archivo maestro del capítulo. Importa las secciones desde sections/cap05/.
+% =============================================================================
+\chapter{Diseño Detallado del Frontend (EthosHub)}
+\label{ch:frontend}
+\resumenCapitulo{Este capítulo documenta la SPA: la jerarquía de componentes, los flujos de
+navegación por rol, el enrutamiento y la condición de Aplicación Web Progresiva, la
+estrategia de interfaz (mapas, edición de código y gráficas), la gestión de estado con
+Zustand, el consumo asíncrono de servicios, la internacionalización y la calidad del código.}
+
+Este capítulo documenta el diseño interno de la \textit{Single Page Application} (SPA)
+\texttt{ethoshubF}, el cliente que consume la API REST descrita en el
+capítulo~\ref{ch:backend} (pág.~\pageref{ch:backend}). Se cubren, con el detalle que exige
+la norma ISO/IEC/IEEE~15289:2024: la jerarquía de componentes y la composición raíz; los
+flujos de navegación por rol; el sistema de enrutamiento y su mapa de sitio; la condición
+de \textbf{Aplicación Web Progresiva} (PWA) y la estrategia de interfaz; la gestión de
+estado con Zustand; el ciclo de vida del consumo asíncrono de servicios; y las
+integraciones avanzadas (mapas, edición de código, gráficas y asistencia de IA).
+
+El código está escrito en \textbf{TypeScript estricto} y construido con \textbf{Vite~5}.
+Se organiza bajo el paradigma \textbf{\textit{feature-first}}, con el alias de módulo
+\comando{@ $\rightarrow$ ./src} que evita las rutas relativas frágiles. El \textit{stack}
+de presentación combina \textbf{React~18.3}, \textbf{React Router~6}, \textbf{Zustand}
+para el estado, \textbf{Axios} para el transporte HTTP, \textbf{TailwindCSS} y primitivas
+\textbf{Radix UI} para la capa visual, e \textbf{i18next} para la internacionalización
+(español, inglés y portugués).
+
+\begin{NotaTecnica}
+La SPA no se despliega de forma independiente: el \textit{script} de construcción compila
+el \textit{bundle} de Vite a \pathbreak{dist/} y este se copia al directorio
+\pathbreak{static/} del backend, que lo sirve desde el mismo \textit{JAR} monolítico. El
+filtro \texttt{SpaFallbackFilter} (capítulo~\ref{ch:backend}, sección~\ref{subsec:filtros},
+pág.~\pageref{subsec:filtros}) reenvía las rutas de navegación a \texttt{index.html},
+permitiendo el enrutamiento del lado del cliente.
+\end{NotaTecnica}
+
+% --- Secciones del capítulo (orden del índice instrucciones.md §5) ---
+\input{sections/cap05/01_componentes}   % 5.1 Árbol y jerarquía de componentes
+\input{sections/cap05/02_userflows}     % 5.2 User flows
+\input{sections/cap05/03_sitemap}       % 5.3 Sitemap y enrutamiento + PWA
+\input{sections/cap05/04_ui}            % 5.4 Estrategia de interfaz y wireframes
+\input{sections/cap05/05_zustand}       % 5.5 Gestión de estado (Zustand)
+\input{sections/cap05/06_servicios}     % 5.6 Consumo asíncrono de servicios
+\input{sections/cap05/07_i18n_build}    % 5.7 i18n, OAuth y optimización
+\input{sections/cap05/08_calidad}       % 5.8 Calidad del código y tooling

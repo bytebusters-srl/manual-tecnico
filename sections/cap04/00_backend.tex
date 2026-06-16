@@ -1,0 +1,42 @@
+% =============================================================================
+% CAPÍTULO 4 — DISEÑO DETALLADO DEL BACKEND (ethoshubB)
+% Archivo maestro del capítulo. Importa las secciones desde sections/cap04/.
+% =============================================================================
+\chapter{Diseño Detallado del Backend (EthosHub)}
+\label{ch:backend}
+\resumenCapitulo{Este capítulo desciende al nivel de código del servidor: la arquitectura
+de la API REST y sus convenciones, las clases y DTOs de los dominios críticos, las
+secuencias de las operaciones clave (autenticación, IA y CV), la comunicación en tiempo
+real, la seguridad y el manejo de excepciones, y el empaquetado y despliegue.}
+
+Este capítulo desciende al nivel de \textbf{código} del Modelo C4 para el componente
+servidor \texttt{ethoshubB}. Mientras el capítulo~\ref{ch:arquitectura} (pág.~\pageref{ch:arquitectura})
+describió la arquitectura global, aquí se documenta el diseño interno con la granularidad
+que exige la norma ISO/IEC/IEEE~15289:2024 para el ítem de información \textit{Software
+Design Description}: la organización de la API REST y sus convenciones; la jerarquía de
+clases, servicios y objetos de transferencia de los dominios críticos; las secuencias de
+las operaciones de mayor valor (autenticación federada, asistencia de IA, compilación de
+currículums); la arquitectura de comunicación en tiempo real; y, por último, la seguridad
+del servidor con su modelo centralizado de manejo de excepciones.
+
+Todo el contenido es \textbf{trazable} a paquetes y clases reales del repositorio. El
+backend se ejecuta sobre \textbf{Java~17} y \textbf{Spring~Boot~4.0.x}, persiste mediante
+\textbf{jOOQ} sobre PostgreSQL~17.6 (Supabase) y se empaqueta como un único \textit{JAR}
+monolítico que sirve además el \textit{bundle} estático del frontend.
+
+\begin{NotaTecnica}
+La organización del código sigue el patrón \textbf{\textit{vertical slice}} (corte
+vertical por funcionalidad): cada dominio de negocio agrupa en un mismo paquete su
+\texttt{Controller}, su \texttt{Service}, su \texttt{Repository} y sus DTOs. Esto se
+contrapone a la organización tradicional por capas técnicas horizontales y reduce el
+acoplamiento entre dominios, alineándose con la decisión de arquitectura ADR-03
+(véase la sección~\ref{sec:adr}, pág.~\pageref{sec:adr}).
+\end{NotaTecnica}
+
+% --- Secciones del capítulo (orden del índice instrucciones.md §4) ---
+\input{sections/cap04/01_api_rest}        % 4.1 Arquitectura de la API REST e interfaces
+\input{sections/cap04/02_clases}          % 4.2 Diagramas de clases por dominios
+\input{sections/cap04/03_secuencias}      % 4.3 Diagramas de secuencia
+\input{sections/cap04/04_realtime}        % 4.4 Comunicación en tiempo real
+\input{sections/cap04/05_seguridad}       % 4.5 Seguridad y manejo de excepciones
+\input{sections/cap04/06_configuracion}   % 4.6 Configuración, empaquetado y despliegue

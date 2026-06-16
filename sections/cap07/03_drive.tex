@@ -1,0 +1,93 @@
+% =============================================================================
+% 7.3 INTEGRACIÓN CON GOOGLE DRIVE E INFRAESTRUCTURA PICKER
+% =============================================================================
+\section{Integración con Google Drive e Infraestructura Picker}
+\label{sec:int_drive}
+
+La tercera integración permite al usuario \textbf{importar archivos desde su Google Drive}
+sin salir de la aplicación, mediante la \textbf{infraestructura Picker} de Google. A
+diferencia de Gemini, este flujo lo gobierna el \textbf{cliente}: es el navegador quien
+abre el selector de Google y obtiene el archivo, que luego se canaliza al backend para su
+almacenamiento.
+
+\subsection{Arquitectura del flujo de importación desde el frontend}
+\label{subsec:drive_flujo}
+
+El flujo combina dos APIs de Google —\textbf{Google Picker API} (el selector visual) y
+\textbf{Google Drive API} (el acceso al archivo)— con la subida posterior al \textit{bucket}
+de Supabase Storage a través del backend. La figura~\ref{fig:drive-flujo} lo modela.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.65cm and 1.25cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.5cm, minimum height=0.85cm, inner sep=3pt},
+    ext/.style={box, fill=c4Externo!30, draw=c4Externo!70!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Persona!25] (user) {Usuario};
+    \node[box, fill=c4Componente!45, right=of user] (btn) {Botón\\``Añadir de Drive''};
+    \node[ext, right=of btn] (picker) {Google\\Picker API};
+    \node[ext, below=of picker] (drive) {Google\\Drive API};
+    \node[box, fill=c4Componente!45, below=of btn] (svc) {fileService\\\scriptsize POST /uploads};
+    \node[box, fill=c4Datos!22, draw=c4Datos!70!black, left=of svc] (store) {Supabase\\Storage};
+
+    \draw[rel] (user) -- (btn);
+    \draw[rel] (btn) -- node[c4etiqueta, above]{\scriptsize abre} (picker);
+    \draw[rel] (picker) -- node[c4etiqueta, right]{\scriptsize selección} (drive);
+    \draw[rel] (drive) to[bend right=12] node[c4etiqueta, left]{\scriptsize archivo} (svc);
+    \draw[rel] (svc) -- node[c4etiqueta, above]{\scriptsize multipart} (store);
+\end{tikzpicture}
+\caption{Flujo de importación de archivos desde Google Drive vía Picker.}
+\label{fig:drive-flujo}
+\end{figure}
+
+Una vez seleccionado el archivo en el Picker, su contenido se entrega al
+\comando{fileService}, que lo sube por \pathbreak{POST /api/uploads}
+(capítulo~\ref{ch:backend}, sección~\ref{subsec:seq_upload},
+pág.~\pageref{subsec:seq_upload}); el backend, actuando como intermediario de confianza,
+lo persiste en Supabase Storage con la \texttt{service\_role key}. Así, el archivo importado
+de Drive sigue exactamente la misma ruta de almacenamiento que cualquier otra subida, sin
+caminos privilegiados en el cliente.
+
+\subsection{Tokens y variables de entorno seguras}
+\label{subsec:drive_tokens}
+
+La integración requiere credenciales de Google Cloud, declaradas como \textbf{variables de
+entorno públicas} del cliente (prefijo \texttt{VITE\_}). La tabla~\ref{tab:drive-vars}
+las documenta, tomadas de \pathbreak{.env.example}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Variable} & \sffamily\textbf{Propósito} \\
+\hline
+\texttt{VITE\_GOOGLE\_CLIENT\_ID} & ID de cliente OAuth 2.0 (tipo ``Aplicación web'') con el dominio en orígenes autorizados. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{VITE\_GOOGLE\_API\_KEY} & Clave de API para habilitar Google Picker API y Google Drive API. \\ \hline
+\end{tabularx}
+\label{tab:drive-vars}
+
+\begin{AlertaSeguridad}
+Ambas credenciales son \textbf{públicas por diseño} (viajan en el \textit{bundle} del
+cliente), igual que la \texttt{anon key} de Supabase
+(sección~\ref{sec:int_supabase}, pág.~\pageref{sec:int_supabase}). Su seguridad no reposa
+en el secreto, sino en la \textbf{restricción por origen}: el \texttt{Client ID} de OAuth
+solo funciona desde los dominios autorizados en Google Cloud Console, lo que impide su
+reutilización desde un origen no aprobado. Las credenciales \textbf{privadas} (como la
+\texttt{service\_role} de Supabase o la \texttt{GEMINI\_API\_KEY}) jamás llevan el prefijo
+\texttt{VITE\_} y permanecen solo en el backend.
+\end{AlertaSeguridad}
+
+\begin{NotaTecnica}
+La frontera de Drive es el único punto donde el cliente consume directamente un tercero
+distinto de Supabase. El prefijo \texttt{VITE\_} es, en sí mismo, un \textbf{control de
+seguridad}: Vite solo expone al \textit{bundle} las variables con ese prefijo, de modo que
+un secreto sin él (definido en el entorno del backend) es \textbf{inalcanzable} desde el
+navegador por construcción. La gestión integral de secretos se detalla en el
+capítulo~\ref{ch:vyv} (sección~\ref{sec:secretos}, pág.~\pageref{sec:secretos}).
+\end{NotaTecnica}

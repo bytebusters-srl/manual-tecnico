@@ -1,0 +1,103 @@
+% =============================================================================
+% 8.2 CONFIGURACIÓN DE ENTORNOS DE EJECUCIÓN
+% =============================================================================
+\section{Configuración de Entornos de Ejecución}
+\label{sec:entornos}
+
+EthosHub opera en dos entornos con topologías distintas: en \textbf{desarrollo}, frontend
+y backend corren como procesos separados comunicados por un \textit{proxy}; en
+\textbf{producción}, ambos se fusionan en un único \textit{JAR} monolítico servido desde un
+contenedor. La figura~\ref{fig:entornos} contrasta ambas topologías.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.1cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.4cm, minimum height=0.8cm, inner sep=3pt},
+    grp/.style={rectangle, rounded corners=5pt, draw=grisISO!60, dashed, inner sep=8pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    % Desarrollo
+    \node[box, fill=c4Componente!45] (vite) at (0,1.4) {Vite\\\scriptsize :3000};
+    \node[box, fill=c4Datos!22, draw=c4Datos!70!black] (spring1) at (0,0) {Spring\\\scriptsize :8080};
+    \draw[rel] (vite) -- node[c4etiqueta, right]{\scriptsize proxy /api} (spring1);
+    \begin{scope}[on background layer]
+      \node[grp, fit=(vite)(spring1), label={[font=\sffamily\scriptsize\bfseries, text=colorPrimario]above:Desarrollo}] {};
+    \end{scope}
+    % Produccion
+    \node[box, fill=c4Sistema, text=white] (jar) at (5.4,0.7) {JAR monolítico\\\scriptsize SPA + API :8080};
+    \node[box, fill=c4Externo!30, draw=c4Externo!70!black, below=of jar] (tect) at (5.4,-0.5) {+ Tectonic};
+    \draw[rel] (jar) -- (tect);
+    \begin{scope}[on background layer]
+      \node[grp, fit=(jar)(tect), label={[font=\sffamily\scriptsize\bfseries, text=colorPrimario]above:Producción (Docker)}] {};
+    \end{scope}
+\end{tikzpicture}
+\caption{Topologías de los entornos de desarrollo y de producción.}
+\label{fig:entornos}
+\end{figure}
+
+\subsection{Entorno de desarrollo: \textit{proxy} inverso de Vite}
+\label{subsec:entorno_dev}
+
+En desarrollo, el servidor de Vite (puerto \textbf{3000}) sirve la SPA con recarga en
+caliente, mientras el backend Spring corre por separado en el puerto \textbf{8080}. Para
+que el cliente llame a \pathbreak{/api} sin tropezar con CORS, Vite expone un
+\textbf{\textit{proxy} inverso} que reenvía las rutas \pathbreak{/api}, \pathbreak{/auth} y
+\pathbreak{/v1} al backend.
+
+\begin{lstlisting}[language=JavaScript, caption={Proxy inverso de desarrollo (\texttt{vite.config.ts}).}, label={lst:vite-proxy}]
+server: {
+  port: 3000,
+  proxy: {
+    '/api':  { target: 'http://localhost:8080', changeOrigin: true },
+    '/auth': { target: 'http://localhost:8080', changeOrigin: true },
+    '/v1':   { target: 'http://localhost:8080', changeOrigin: true },
+  },
+}
+\end{lstlisting}
+
+\begin{NotaTecnica}
+El \textit{proxy} establece además \texttt{Cross-Origin-Opener-Policy:
+same-origin-allow-popups} para soportar el flujo de ventana emergente de OAuth
+(capítulo~\ref{ch:frontend}, sección~\ref{subsec:oauth}, pág.~\pageref{subsec:oauth}) y una
+lista de \texttt{allowedHosts} para los dominios de previsualización. Este \textit{proxy}
+\textbf{solo existe en desarrollo}: en producción, el mismo origen sirve la SPA y la API,
+por lo que CORS deja de ser un problema.
+\end{NotaTecnica}
+
+\subsection{Entorno de producción: contenedor Docker}
+\label{subsec:entorno_prod}
+
+En producción, el sistema se empaqueta como una \textbf{imagen Docker multi-etapa}
+(capítulo~\ref{ch:backend}, sección~\ref{subsec:docker}, pág.~\pageref{subsec:docker}): una
+etapa de compilación con el JDK~17 y una etapa de ejecución con el JRE~17 que incorpora el
+compilador \textbf{Tectonic}. El contenedor expone el puerto \textbf{8080} y arranca con
+\comando{java -jar app.jar}. La tabla~\ref{tab:prod-params} resume sus parámetros.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Parámetro} & \sffamily\textbf{Valor} \\
+\hline
+Imagen base (ejecución) & \texttt{eclipse-temurin:17-jre-jammy}. \\ \hline
+\rowcolor{grisTecnico}
+Puerto expuesto & \texttt{8080}. \\ \hline
+Perfil Spring activo & \texttt{prod} (vía \texttt{SPRING\_PROFILES\_ACTIVE}). \\ \hline
+\rowcolor{grisTecnico}
+Compilador LaTeX & Tectonic 0.15.0 (caché precalentada). \\ \hline
+\textit{Entrypoint} & \texttt{java -jar app.jar}. \\ \hline
+\end{tabularx}
+\label{tab:prod-params}
+
+\begin{AvisoNota}
+La configuración por contenedor sigue el principio de \textbf{paridad
+desarrollo-producción}: el mismo artefacto que se prueba localmente (con su compilador
+LaTeX y su perfil de Spring) es el que se despliega, reduciendo la clase de errores que
+solo aparecen ``en producción''. Los parámetros que varían entre entornos se inyectan
+exclusivamente por variables de entorno, no por reconstrucción de la imagen, como detalla
+la sección~\ref{sec:secretos} (pág.~\pageref{sec:secretos}).
+\end{AvisoNota}

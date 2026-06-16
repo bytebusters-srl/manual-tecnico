@@ -1,0 +1,437 @@
+% =============================================================================
+% CAPÍTULO 3 — ARQUITECTURA GLOBAL DEL SISTEMA (Modelo C4)
+% =============================================================================
+\chapter{Arquitectura Global del Sistema}
+\label{ch:arquitectura}
+\resumenCapitulo{Este capítulo describe la arquitectura de la plataforma con el Modelo~C4
+(contexto, contenedores y componentes), el empaquetado monolítico, y las decisiones de
+arquitectura (ADR) que sustentan el diseño del backend, el frontend y la base de datos.}
+
+Este capítulo describe la arquitectura de EthosHub mediante el \textbf{modelo C4},
+recorriendo sus niveles de abstracción: contexto (nivel~1), contenedores (nivel~2) y
+componentes (nivel~3). Se cierra con la estrategia de \textbf{empaquetado monolítico
+unificado}, decisión arquitectónica central que determina la forma del artefacto
+desplegable.
+
+El modelo C4 (\textit{Context, Containers, Components, Code}), propuesto por Simon
+Brown, se adopta porque ofrece un \textbf{conjunto de vistas jerárquicas} que permiten
+``hacer zoom'' sobre el sistema sin perder coherencia entre niveles. Cada nivel
+responde a una pregunta distinta y a una audiencia distinta, como resume la
+tabla~\ref{tab:c4-niveles}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|l|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Nivel} & \textbf{Pregunta que responde} & \textbf{Audiencia} \\
+\hline
+1. Contexto & ¿Quién usa el sistema y de qué depende? & Todos / negocio \\
+\hline
+\rowcolor{grisTecnico}
+2. Contenedores & ¿De qué piezas ejecutables se compone? & Arquitectos / DevOps \\
+\hline
+3. Componentes & ¿Qué módulos hay dentro de cada contenedor? & Desarrolladores \\
+\hline
+\rowcolor{grisTecnico}
+4. Código & ¿Cómo se implementa cada componente? & Desarrolladores (cap.~\ref{ch:backend}, \ref{ch:frontend}) \\
+\hline
+\end{tabularx}
+\label{tab:c4-niveles}
+
+\begin{AvisoNota}
+El nivel 4 (Código) del modelo C4 no se representa con diagramas exhaustivos en este
+capítulo, sino que se desarrolla en los capítulos de diseño detallado de backend
+(cap.~\ref{ch:backend}) y frontend (cap.~\ref{ch:frontend}), mediante diagramas de
+clases, de secuencia y de componentes a nivel de implementación.
+\end{AvisoNota}
+
+% -----------------------------------------------------------------------------
+\section{Diagrama de Contexto (Nivel 1)}
+\label{sec:c4_contexto}
+
+En el nivel de contexto, EthosHub se modela como una \textbf{caja negra} que
+interactúa con sus actores humanos y con los ecosistemas externos de los que depende.
+El sistema no implementa autenticación propia, persistencia propia ni capacidades de
+IA propias: las consume de servicios gestionados.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=1.4cm and 2.4cm]
+    % Sistema en foco
+    \node[c4sistema, minimum width=4.2cm, minimum height=1.8cm] (ethos)
+        {EthosHub\\\scriptsize Plataforma de Talent Hub\\\scriptsize(Monolito Spring + SPA React)};
+
+    % Actores humanos (izquierda)
+    \node[c4persona, left=of ethos, yshift=1.6cm] (cand) {Perfil\\Candidato};
+    \node[c4persona, left=of ethos, yshift=-1.6cm] (recl) {Perfil\\Reclutador};
+    \node[c4persona, below=2.6cm of ethos] (admin) {Perfil\\Administrador};
+
+    % Ecosistemas externos (derecha)
+    \node[c4externo, right=of ethos, yshift=3.0cm] (supa) {Supabase\\\scriptsize Auth · BD · Realtime};
+    \node[c4externo, right=of ethos, yshift=1.0cm] (gem) {Google Gemini\\\scriptsize API de IA};
+    \node[c4externo, right=of ethos, yshift=-1.0cm] (drive) {Google Drive\\\scriptsize Picker / Files};
+    \node[c4externo, right=of ethos, yshift=-3.0cm] (smtp) {Servidor SMTP\\\scriptsize (Gmail)};
+
+    % Relaciones humanas
+    \draw[c4flecha] (cand) -- node[c4etiqueta, above, sloped]{usa (HTTPS)} (ethos);
+    \draw[c4flecha] (recl) -- node[c4etiqueta, below, sloped]{usa (HTTPS)} (ethos);
+    \draw[c4flecha] (admin) -- node[c4etiqueta, right]{administra} (ethos);
+
+    % Relaciones externas
+    \draw[c4flecha] (ethos) -- node[c4etiqueta, above, sloped]{valida JWT / SQL / RPC} (supa);
+    \draw[c4flecha] (ethos) -- node[c4etiqueta, above]{genera insights / CV} (gem);
+    \draw[c4flecha] (ethos) -- node[c4etiqueta, below, sloped]{importa archivos} (drive);
+    \draw[c4flecha] (ethos) -- node[c4etiqueta, right]{envía correos OTP} (smtp);
+\end{tikzpicture}
+\caption{Diagrama de contexto C4 (nivel 1): EthosHub frente a sus actores y ecosistemas externos.}
+\label{fig:c4-contexto}
+\end{figure}
+
+\begin{NotaTecnica}
+La dependencia de Supabase es \textbf{dura} para la autenticación y la persistencia,
+y la de Gemini es \textbf{blanda} y degradable: el sistema sigue operativo aunque la
+IA falle (véase RNF-DISP-01). Esta distinción guía la estrategia de resiliencia.
+\end{NotaTecnica}
+
+La tabla~\ref{tab:dependencias-ext} caracteriza cada dependencia externa: el protocolo
+de interacción, la criticidad y la estrategia de mitigación ante su indisponibilidad.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|l|c|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Dependencia} & \textbf{Protocolo} & \textbf{Criticidad} & \textbf{Mitigación ante fallo} \\
+\hline
+Supabase Auth & HTTPS / JWKS & Dura & \textit{Warmup} de JWKS al arranque; rechazo controlado (401) si falla la validación. \\
+\hline
+\rowcolor{grisTecnico}
+PostgreSQL (Supabase) & JDBC / \textit{pooler} & Dura & Reintentos del \textit{pooler}; sin BD el sistema no opera (por diseño). \\
+\hline
+Supabase Realtime & WebSocket & Media & Degradación a recarga manual de mensajes/notificaciones. \\
+\hline
+\rowcolor{grisTecnico}
+Google Gemini & HTTPS REST & Blanda & \texttt{AiServiceException} (429/503/502); el resto de la plataforma sigue operativa. \\
+\hline
+Google Drive & HTTPS / Picker & Blanda & La importación se omite; persiste la subida directa de archivos. \\
+\hline
+\rowcolor{grisTecnico}
+SMTP (Gmail) & SMTP/TLS & Media & Los correos OTP fallan de forma controlada; se informa al usuario. \\
+\hline
+\end{tabularx}
+\label{tab:dependencias-ext}
+
+% -----------------------------------------------------------------------------
+\section{Diagrama de Contenedores (Nivel 2)}
+\label{sec:c4_contenedores}
+
+Al abrir la caja negra aparecen los \textbf{contenedores} ejecutables. La
+particularidad de EthosHub es que la SPA React y la API Spring Boot \textbf{viajan en
+el mismo proceso}: el monolito sirve los recursos estáticos del cliente y atiende la
+API REST desde el mismo JAR.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=1.1cm and 1.8cm]
+    % Límite del monolito
+    \node[c4contenedor, minimum width=3.4cm] (spa) at (0,1.4) {SPA React\\\scriptsize(servida en \texttt{/})};
+    \node[c4contenedor, minimum width=3.4cm] (api) at (0,-0.7) {API REST Spring Boot\\\scriptsize Controllers · Services · Repos};
+
+    \begin{scope}[on background layer]
+        \node[c4limite, fill=c4Sistema!8, fit=(spa)(api), inner sep=14pt] (mono) {};
+    \end{scope}
+    \node[font=\sffamily\scriptsize\bfseries\color{c4Sistema}, anchor=north west] at (mono.north west)
+        {\hspace{2pt}JAR monolítico EthosHub};
+
+    % Almacén de datos
+    \node[c4datos, right=2.6cm of api] (db) {PostgreSQL\\\scriptsize esquema \texttt{core}\\\scriptsize(Supabase)};
+
+    % Externos
+    \node[c4externo, right=2.4cm of spa] (auth) {Supabase Auth\\\scriptsize JWKS};
+    \node[c4externo, above=1.0cm of db, xshift=2.8cm] (gem) {Gemini API};
+
+    % Relaciones internas
+    \draw[c4flecha] (spa) -- node[c4etiqueta, left]{\texttt{/api} (JSON)} (api);
+    \draw[c4flecha] (api) -- node[c4etiqueta, above]{jOOQ / JDBC} (db);
+
+    % Relaciones externas
+    \draw[c4flecha] (spa) -- node[c4etiqueta, above]{login / Realtime} (auth);
+    \draw[c4flecha] (api) to[bend left=12] node[c4etiqueta, right]{valida JWT (JWKS)} (auth);
+    \draw[c4flecha] (api) -- node[c4etiqueta, below, sloped]{RestClient (HTTP)} (gem);
+\end{tikzpicture}
+\caption{Diagrama de contenedores C4 (nivel 2): la SPA y la API conviven en un único JAR.}
+\label{fig:c4-contenedores}
+\end{figure}
+
+El flujo de datos predominante es: los componentes de la SPA consumen la API REST
+(\comando{/api}) vía Axios y, para tiempo real y autenticación, hablan
+\textbf{directamente} con Supabase. La API valida cada JWT contra el JWKS de Supabase
+y opera sobre el esquema \texttt{core} mediante jOOQ; las operaciones sensibles a RLS
+se canalizan por RPCs \comando{SECURITY DEFINER}.
+
+La tabla~\ref{tab:contenedores} formaliza cada contenedor: su tecnología, su
+responsabilidad y el contenedor o sistema con el que se comunica.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Contenedor} & \textbf{Tecnología} & \textbf{Responsabilidad y comunicación} \\
+\hline
+SPA React & React 18 / Vite & Renderiza la interfaz; consume la API (Axios) y Supabase (Realtime/Auth). \\
+\hline
+\rowcolor{grisTecnico}
+API REST & Spring Boot 4 & Expone los \textit{endpoints}, valida JWT, aplica lógica de dominio y persiste vía jOOQ. \\
+\hline
+Base de datos & PostgreSQL & Almacena el esquema \texttt{core}; aplica RLS y ejecuta RPCs \texttt{SECURITY DEFINER}. \\
+\hline
+\end{tabularx}
+\label{tab:contenedores}
+
+\paragraph{Patrón de \textit{doble canal} hacia Supabase.} Una característica
+distintiva del diseño es que el cliente habla con Supabase por \textbf{dos vías
+complementarias}: (1) \textit{indirectamente}, a través de la API REST del backend para
+las operaciones de negocio que requieren lógica de servidor; y (2)
+\textit{directamente}, para la autenticación y los canales de tiempo real (Realtime),
+donde la baja latencia y la mensajería push son críticas. El backend, por su parte,
+nunca confía ciegamente en el cliente: revalida cada JWT y reaplica las reglas de
+acceso del lado del servidor.
+
+% -----------------------------------------------------------------------------
+\section{Diagrama de Componentes (Nivel 3)}
+\label{sec:c4_componentes}
+
+\subsection{Componentes internos de \texttt{ethoshubB}}
+\label{subsec:comp_backend}
+
+El backend sigue un \textbf{patrón por capas organizado por \textit{feature}}
+(\textit{vertical slice}): cada dominio es un paquete autocontenido con su
+\texttt{Controller}, \texttt{Service}, \texttt{Repository} (jOOQ) y sus DTOs. La
+figura~\ref{fig:c4-comp-backend} muestra el corte transversal de capas y los
+componentes de infraestructura compartidos.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.2cm]
+    % Capa controladores
+    \node[c4componente, fill=c4Componente] (ctrl) at (0,3) {Capa de Controladores\\\scriptsize \texttt{@RestController} · springdoc-openapi};
+    % Capa servicios
+    \node[c4componente, fill=c4Componente!80] (svc) at (0,1.5) {Capa de Servicios\\\scriptsize lógica de dominio · transacciones};
+    % Capa repos
+    \node[c4componente, fill=c4Componente!60] (repo) at (0,0) {Capa de Repositorios\\\scriptsize jOOQ \texttt{DSLContext} · Spring JDBC};
+
+    % Infraestructura transversal (config)
+    \node[c4componente, fill=colorAcento!40, draw=colorAcento!80!black, minimum width=3.0cm] (sec) at (-4.3,1.5)
+        {\texttt{config/}\\\scriptsize SecurityConfig\\\scriptsize Filtros · CORS};
+    \node[c4componente, fill=grisTecnico, draw=grisISO, minimum width=3.0cm] (shared) at (4.3,1.5)
+        {\texttt{shared/}\\\scriptsize ApiResponse\\\scriptsize GlobalExceptionHandler};
+
+    % BD
+    \node[c4datos, below=0.9cm of repo] (db) {PostgreSQL \texttt{core}};
+
+    \draw[c4flecha] (ctrl) -- node[c4etiqueta, right]{invoca} (svc);
+    \draw[c4flecha] (svc) -- node[c4etiqueta, right]{persiste} (repo);
+    \draw[c4flecha] (repo) -- (db);
+    \draw[c4flecha, dashed] (sec) -- node[c4etiqueta, above]{protege} (ctrl);
+    \draw[c4flecha, dashed] (shared) -- node[c4etiqueta, above]{envuelve} (ctrl);
+\end{tikzpicture}
+\caption{Componentes del backend: capas por \textit{feature} e infraestructura transversal.}
+\label{fig:c4-comp-backend}
+\end{figure}
+
+Los dominios funcionales (paquetes) y su responsabilidad se resumen en la
+tabla~\ref{tab:modulos-backend}.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Paquete} & \textbf{Responsabilidad} \\
+\hline
+auth / security & Registro, login, OAuth \textit{sync}, recuperación de contraseña, OTP, cambio de credenciales, eliminación de cuenta. \\
+\hline
+\rowcolor{grisTecnico}
+profile / preferences & Perfil profesional básico y preferencias e idioma del usuario. \\
+\hline
+project / experience / education / skills & Contenido profesional: proyectos (multi-PDF, Drive), experiencia (geo), formación y habilidades (\textit{soft-delete}). \\
+\hline
+\rowcolor{grisTecnico}
+portfolio / cvstudio & Ajustes del portafolio público y editor de CV con IA y compilación a PDF. \\
+\hline
+connections / chat / notifications & Conexiones externas, mensajería en tiempo real y notificaciones. \\
+\hline
+\rowcolor{grisTecnico}
+recruiter (+ ai) & Descubrimiento de talento, Kanban, notas, \textit{leaderboard}, \textit{insights} IA, búsqueda NLP. \\
+\hline
+admin & Métricas, moderación, gestión de perfiles/skills, correos masivos. \\
+\hline
+\rowcolor{grisTecnico}
+config / shared & Seguridad, CORS, filtros, \texttt{RestClient}; \texttt{ApiResponse}, excepciones, políticas. \\
+\hline
+\end{tabularx}
+\label{tab:modulos-backend}
+
+\subsection{Componentes internos de \texttt{ethoshubF}}
+\label{subsec:comp_frontend}
+
+El frontend adopta una organización \textbf{\textit{feature-first}} con capas
+compartidas y el alias \comando{@ $\rightarrow$ ./src}. La
+figura~\ref{fig:c4-comp-frontend} muestra el flujo de datos: los componentes consumen
+\textit{stores} Zustand y servicios; los servicios hablan con la API REST (Axios
+\texttt{apiClient}) o directamente con Supabase.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.9cm and 1.5cm]
+    \node[c4componente, fill=c4Componente] (app) at (0,3) {\texttt{app/}\\\scriptsize providers · layouts · router};
+    \node[c4componente, fill=c4Componente] (pages) at (-3,1.5) {\texttt{pages/}\\\scriptsize auth · dashboard · recruiter · admin · public};
+    \node[c4componente, fill=c4Componente] (features) at (3,1.5) {\texttt{features/}\\\scriptsize portfolio · projects · recruiter};
+    \node[c4componente, fill=c4Componente!70] (store) at (-3,-0.3) {\texttt{store/} (Zustand)\\\scriptsize authStore · projectsStore · ...};
+    \node[c4componente, fill=c4Componente!70] (services) at (3,-0.3) {\texttt{shared/services/}\\\scriptsize apiClient · authService · ...};
+
+    \node[c4externo, below=1.0cm of store] (api) {API REST\\\scriptsize :8080 \texttt{/api}};
+    \node[c4externo, below=1.0cm of services] (supa) {Supabase\\\scriptsize Realtime · RPC · Auth};
+
+    \draw[c4flecha] (app) -- (pages);
+    \draw[c4flecha] (app) -- (features);
+    \draw[c4flecha] (pages) -- node[c4etiqueta, left]{leen estado} (store);
+    \draw[c4flecha] (features) -- node[c4etiqueta, right]{invocan} (services);
+    \draw[c4flecha] (store) -- node[c4etiqueta, left]{HTTP} (api);
+    \draw[c4flecha] (services) -- node[c4etiqueta, right]{HTTP / WS} (supa);
+    \draw[c4flecha, dashed] (services) to[bend left=20] (api);
+\end{tikzpicture}
+\caption{Componentes del frontend: organización \textit{feature-first} y flujo de datos.}
+\label{fig:c4-comp-frontend}
+\end{figure}
+
+% -----------------------------------------------------------------------------
+\section{Estrategia de Empaquetado Monolítico Unificado}
+\label{sec:empaquetado}
+
+La decisión arquitectónica de empaquetar frontend y backend en un único artefacto
+busca \textbf{simplificar el despliegue}: un solo JAR sirve la SPA y la API,
+eliminando la necesidad de un servidor web independiente para los estáticos y los
+problemas de CORS en producción.
+
+\subsection{Análisis del flujo de construcción (\texttt{build.sh})}
+\label{subsec:build_flujo}
+
+El script \comando{build.sh} orquesta el empaquetado en tres fases. La
+figura~\ref{fig:build-flujo} las representa como un diagrama de flujo.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.85cm and 1.2cm]
+    \node[flujoInicio] (start) {Inicio \texttt{./build.sh}};
+    \node[flujoDecision, below=of start] (chkjava) {¿JDK $\geq$ 17?};
+    \node[flujoProceso, below=of chkjava] (fe) {Fase 1: Frontend\\\scriptsize \texttt{npm ci} + \texttt{npm run build} $\rightarrow$ \texttt{dist/}};
+    \node[flujoProceso, below=of fe] (copy) {Fase 2: Copiar artefactos\\\scriptsize \texttt{dist/} $\rightarrow$ \texttt{resources/static/}};
+    \node[flujoProceso, below=of copy] (mvn) {Fase 3: Empaquetado Maven\\\scriptsize \texttt{mvn clean package} (skip tests)};
+    \node[flujoInicio, below=of mvn, fill=c4Sistema] (jar) {JAR ejecutable autónomo};
+    \node[flujoProceso, right=2.3cm of chkjava, fill=bgAdvertencia, draw=red!70!black] (fail) {\texttt{fail}: aborta build};
+
+    \draw[flujoFlecha] (start) -- (chkjava);
+    \draw[flujoFlecha] (chkjava) -- node[c4etiqueta, left]{sí} (fe);
+    \draw[flujoFlecha] (chkjava) -- node[c4etiqueta, above]{no} (fail);
+    \draw[flujoFlecha] (fe) -- (copy);
+    \draw[flujoFlecha] (copy) -- (mvn);
+    \draw[flujoFlecha] (mvn) -- (jar);
+\end{tikzpicture}
+\caption{Flujo de construcción monolítica orquestado por \texttt{build.sh}.}
+\label{fig:build-flujo}
+\end{figure}
+
+\begin{AvisoNota}
+El script admite \comando{-{}-skip-fe} (reutiliza el \texttt{dist/} existente) y
+\comando{-{}-prod} (activa el perfil Spring \texttt{prod} con
+\texttt{application-prod.yml}). Esto agiliza iteraciones en las que solo cambia el
+backend.
+\end{AvisoNota}
+
+\subsection{Compilación del Frontend y transferencia al directorio estático}
+\label{subsec:build_fe}
+
+En la Fase~1, Vite compila la SPA (\comando{tsc \&\& vite build}) generando la carpeta
+\comando{dist/}. En la Fase~2, el script limpia
+\comando{src/main/resources/static/} y copia allí el contenido de \texttt{dist/}. En
+producción esta transferencia también puede realizarse mediante el
+\texttt{maven-resources-plugin} durante la fase \texttt{process-resources}. En tiempo
+de ejecución, el \comando{SpaFallbackFilter} reenvía las rutas de navegación de la
+SPA hacia \comando{index.html}, permitiendo el enrutamiento del lado del cliente.
+
+\subsection{Estructura del artefacto final ejecutable}
+\label{subsec:build_jar}
+
+El resultado es un \textbf{JAR ejecutable autónomo} (\textit{fat JAR}) generado por el
+\texttt{spring-boot-maven-plugin}. Contiene la SPA compilada bajo \texttt{static/}, las
+clases del backend, las migraciones SQL y todas las dependencias. Se ejecuta con:
+
+\begin{lstlisting}[language=bash]
+java -jar target/ethoshub-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+\end{lstlisting}
+
+\begin{NotaTecnica}
+Para la operación en contenedor, el \texttt{Dockerfile} emplea una construcción
+multi-etapa: compila el JAR sobre \texttt{eclipse-temurin:17-jdk} y lo ejecuta sobre
+\texttt{17-jre} con \textbf{Tectonic} preinstalado y su caché de paquetes
+\textit{pre-calentada}, de modo que la compilación de CVs a PDF en producción tarde
+solo 1--2 segundos. El detalle se documenta en el capítulo de entornos de ejecución.
+\end{NotaTecnica}
+
+% -----------------------------------------------------------------------------
+\section{Registro de Decisiones Arquitectónicas}
+\label{sec:adr}
+
+Para completar la descripción de la arquitectura conforme a ISO 15289, se documentan
+las decisiones arquitectónicas (\textit{Architecture Decision Records}, ADR) más
+relevantes. Cada decisión registra el contexto que la motivó, la opción adoptada y sus
+consecuencias, dejando trazabilidad del \textit{porqué} de la arquitectura.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{ADR} & \textbf{Decisión y contexto} & \textbf{Consecuencias} \\
+\hline
+ADR-01 & Empaquetado monolítico (SPA + API en un JAR) frente a despliegue separado. & (+) Despliegue simple, sin CORS en producción. ($-$) Acoplamiento del ciclo de \textit{release} entre FE y BE. \\
+\hline
+\rowcolor{grisTecnico}
+ADR-02 & Delegar autenticación en Supabase Auth; backend como Resource Server. & (+) Menor superficie de ataque, MFA y OAuth externalizados. ($-$) Dependencia dura de un tercero. \\
+\hline
+ADR-03 & Persistencia con jOOQ (SQL tipado) en lugar de JPA/Hibernate. & (+) Control explícito de consultas, sin sorpresas de \textit{lazy loading}. ($-$) Mayor verbosidad y curva de aprendizaje. \\
+\hline
+\rowcolor{grisTecnico}
+ADR-04 & RLS + RPCs \texttt{SECURITY DEFINER} para aislamiento de datos por usuario. & (+) Seguridad en profundidad a nivel de motor. ($-$) Lógica de acceso repartida entre app y BD. \\
+\hline
+ADR-05 & IA (Gemini) como dependencia blanda y degradable. & (+) Resiliencia: la plataforma opera sin IA. ($-$) Necesidad de mapear errores \textit{upstream} con cuidado. \\
+\hline
+\rowcolor{grisTecnico}
+ADR-06 & Tectonic empotrado con caché \textit{pre-calentada} en la imagen Docker. & (+) Compilación de PDF en 1--2~s sin descargas en caliente. ($-$) Imagen Docker más pesada. \\
+\hline
+\end{tabularx}
+
+\begin{AvisoNota}
+Estas decisiones no son inmutables: ante un crecimiento sostenido de la carga, ADR-01
+podría revisarse hacia una segregación de servicios. El registro ADR existe
+precisamente para que tales revisiones partan de un contexto documentado.
+\end{AvisoNota}

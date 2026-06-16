@@ -1,0 +1,165 @@
+% =============================================================================
+% 5.5 GESTIÓN DE ESTADO GLOBAL Y LOCAL (ZUSTAND)
+% =============================================================================
+\section{Gestión de Estado Global y Local (Zustand)}
+\label{sec:zustand}
+
+El estado de la aplicación se gestiona con \textbf{Zustand}, una librería minimalista que
+evita el \textit{boilerplate} de soluciones más pesadas. El diseño reparte el estado en
+\textit{stores} independientes por dominio, en lugar de un único almacén monolítico.
+
+\subsection{Arquitectura de \textit{stores} por dominios}
+\label{subsec:stores}
+
+Cada \textit{store} encapsula el estado y las acciones de un dominio concreto, lo que
+limita el alcance de las re-renderizaciones y mantiene el código cohesionado. La
+tabla~\ref{tab:stores} enumera los \textit{stores} reales del directorio \pathbreak{store/}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Store} & \sffamily\textbf{Responsabilidad} \\
+\hline
+\texttt{authStore} & Sesión, token, rol e identidad; persistencia e hidratación de idioma. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{notificationsStore} & Notificaciones reactivas del usuario (con eventos Realtime). \\
+\hline
+\texttt{projectsStore} · \texttt{skillsStore} & Estado de proyectos y habilidades del perfil. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{cvStudioStore} & Estado del editor de CV y la conversación con la IA. \\
+\hline
+\texttt{portfolioStore} · \texttt{connectionsStore} & Ajustes del portafolio y conexiones externas. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{preferencesStore} · \texttt{uiStore} & Preferencias del usuario y estado efímero de la interfaz. \\
+\hline
+\texttt{resetAllStores} & Utilidad que reinicia todos los \textit{stores} al cerrar sesión. \\
+\hline
+\end{tabularx}
+\label{tab:stores}
+
+\subsection{Mecanismos de persistencia en el cliente}
+\label{subsec:persistencia}
+
+La gestión de sesión es un punto de diseño cuidadoso. El \comando{authStore} emplea el
+\textit{middleware} \comando{persist} de Zustand y distingue dos almacenamientos del
+navegador con propósitos distintos, descritos en la tabla~\ref{tab:persistencia}.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.2cm}|L{3.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Almacén} & \sffamily\textbf{Clave} & \sffamily\textbf{Contenido y motivo} \\
+\hline
+\texttt{sessionStorage} & \texttt{ethoshub\_access\_token} & Token y expiración; \textbf{por pestaña}, habilita sesiones múltiples aisladas. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{localStorage} & \texttt{ethoshub\_auth} & Porción no sensible del \textit{store}, para hidratar la identidad entre recargas. \\ \hline
+\end{tabularx}
+\label{tab:persistencia}
+
+\paragraph{Ciclo de vida de la sesión.} La sesión atraviesa un ciclo de vida bien
+definido —desde la hidratación al arrancar la app hasta la limpieza al cerrar sesión—,
+representado como máquina de estados en la figura~\ref{fig:fsm-sesion}.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=1.1cm and 1.9cm,
+    estado/.style={rectangle, rounded corners=8pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize\bfseries, align=center, minimum width=2.1cm, minimum height=0.75cm},
+    ini/.style={circle, fill=flujoInicio, minimum size=0.4cm, inner sep=0pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[ini] (s) {};
+    \node[estado, right=1.0cm of s] (hidr) {Hidratando\\\scriptsize (localStorage)};
+    \node[estado, right=of hidr] (anon) {Anónimo};
+    \node[estado, right=of anon] (auth) {Autenticado\\\scriptsize (token activo)};
+    \node[estado, below=of auth] (exp) {Expirado};
+
+    \draw[rel] (s) -- (hidr);
+    \draw[rel] (hidr) -- node[c4etiqueta, above]{sin token} (anon);
+    \draw[rel] (anon) -- node[c4etiqueta, above]{login} (auth);
+    \draw[rel] (auth) -- node[c4etiqueta, right]{exp vencido} (exp);
+    \draw[rel] (exp) to[bend left=30] node[c4etiqueta, below]{auth:unauthorized} (anon);
+    \draw[rel] (auth) to[bend right=45] node[c4etiqueta, above]{logout} (anon);
+\end{tikzpicture}
+\caption{Máquina de estados del ciclo de vida de la sesión en el cliente.}
+\label{fig:fsm-sesion}
+\end{figure}
+
+\paragraph{Cierre de sesión coordinado entre pestañas.} El \textit{logout} es
+\textbf{global}: \comando{logout()} limpia el \texttt{sessionStorage} y el
+\texttt{localStorage} y emite un evento por un \comando{BroadcastChannel('ethoshub\_auth')},
+de modo que todas las pestañas abiertas cierran sesión de forma sincronizada. La
+figura~\ref{fig:flow-logout} ilustra la propagación.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.6cm,
+    box/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.6cm, minimum height=0.8cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=bgFail!85, text=white, draw=red!70!black] (lo) {Pestaña A:\\\texttt{logout()}};
+    \node[box, fill=c4Componente!40, right=of lo] (clear) {limpia storage\\\scriptsize session + local};
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black, right=of clear] (bc) {BroadcastChannel\\\scriptsize ethoshub\_auth};
+    \node[box, fill=c4Componente!40, below=of bc] (tabB) {Pestaña B:\\\scriptsize cierra sesión};
+    \node[box, fill=c4Componente!40, below=of clear] (tabC) {Pestaña C:\\\scriptsize cierra sesión};
+
+    \draw[rel] (lo) -- (clear);
+    \draw[rel] (clear) -- (bc);
+    \draw[rel] (bc) -- node[c4etiqueta, right]{\scriptsize evento} (tabB);
+    \draw[rel] (bc) to[bend left=10] node[c4etiqueta, above]{\scriptsize evento} (tabC);
+\end{tikzpicture}
+\caption{Cierre de sesión global propagado entre pestañas vía \texttt{BroadcastChannel}.}
+\label{fig:flow-logout}
+\end{figure}
+
+\begin{NotaTecnica}
+La elección de \texttt{sessionStorage} para el token —y no \texttt{localStorage}— es
+deliberada: al estar aislado por pestaña, un usuario puede mantener \textbf{dos sesiones
+simultáneas} (p.~ej., profesional y reclutador) en pestañas distintas sin que una
+sobrescriba a la otra. La porción persistida en \texttt{localStorage} es explícitamente
+\textbf{no sensible} (no contiene el token), solo datos de identidad para hidratación.
+\end{NotaTecnica}
+
+\subsection{Estado reactivo en tiempo real: \texttt{notificationsStore}}
+\label{subsec:rt_cliente}
+
+El \comando{notificationsStore} es \textbf{reactivo}: no consulta el servidor por
+\textit{polling}, sino que se actualiza ante eventos \textit{push} de \textbf{Supabase
+Realtime}. Cuando el backend persiste una notificación (capítulo~\ref{ch:backend},
+sección~\ref{sec:realtime}, pág.~\pageref{sec:realtime}), Supabase emite el cambio al
+cliente suscrito y el \textit{store} incrementa el contador y reordena la lista sin
+recargar la página. La figura~\ref{fig:flow-rt-cliente} sintetiza la suscripción.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.6cm,
+    box/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.7cm, minimum height=0.8cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black] (rt) {Supabase\\Realtime};
+    \node[box, fill=c4Componente!45, right=of rt] (store) {notifications\\Store};
+    \node[box, fill=c4Componente!40, right=of store] (ui) {Campana\\\scriptsize + badge contador};
+
+    \draw[rel] (rt) -- node[c4etiqueta, above]{\scriptsize evento INSERT} (store);
+    \draw[rel] (store) -- node[c4etiqueta, above]{\scriptsize re-render} (ui);
+\end{tikzpicture}
+\caption{Consumo reactivo de notificaciones en tiempo real en el cliente.}
+\label{fig:flow-rt-cliente}
+\end{figure}
+
+El usuario marca las notificaciones como leídas individualmente o en bloque; estas
+acciones llaman a \\ \texttt{notificationsService} (\pathbreak{/api/v1/notifications}), y el
+contador del \textit{badge} se recalcula a partir del estado del \textit{store}.

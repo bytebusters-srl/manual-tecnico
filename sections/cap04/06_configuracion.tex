@@ -1,0 +1,180 @@
+% =============================================================================
+% 4.6 CONFIGURACIÓN, EMPAQUETADO Y DESPLIEGUE DEL BACKEND
+% =============================================================================
+\section{Configuración, Empaquetado y Despliegue}
+\label{sec:config_backend}
+
+El diseño del backend no termina en el código: incluye su \textbf{configuración
+externalizada}, su \textbf{empaquetado monolítico} y su \textbf{imagen de ejecución}. Esta
+sección documenta esos tres aspectos, que la norma ISO/IEC/IEEE~15289:2024 clasifica como
+parte del ítem de información de \textit{configuración del software}.
+
+\subsection{Configuración por perfiles y variables de entorno}
+\label{subsec:config_perfiles}
+
+La configuración se externaliza con el mecanismo de \textbf{perfiles de Spring Boot}: un
+fichero base \pathbreak{application.yml} y dos sobrecargas por entorno
+(\pathbreak{application-local.yml} y \pathbreak{application-prod.yml}). El perfil activo se
+selecciona con la variable \texttt{SPRING\_PROFILES\_ACTIVE} (por defecto \texttt{local}).
+\textbf{Ningún secreto se escribe en el código}: todos llegan como variables de entorno,
+como muestra la tabla~\ref{tab:config-vars}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Variable de entorno} & \sffamily\textbf{Propósito} \\
+\hline
+\texttt{SUPABASE\_URL} & URL base del proyecto Supabase (Auth, Storage, REST). \\ \hline
+\rowcolor{grisTecnico}
+\texttt{SUPABASE\_ANON\_KEY} & Clave pública para operaciones con RLS. \\ \hline
+\texttt{SUPABASE\_SERVICE\_ROLE\_KEY} & Clave privilegiada del backend (evade RLS); nunca se expone. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{GEMINI\_API\_KEY} & Clave del motor de IA Gemini 2.5 Flash. \\ \hline
+\texttt{CORS\_ALLOWED\_ORIGINS} & Orígenes autorizados para peticiones \textit{cross-origin}. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{APP\_BASE\_URL} · \texttt{APP\_FRONTEND\_URL} & URLs absolutas para enlaces de correo y \textit{callbacks} OAuth. \\ \hline
+\end{tabularx}
+\label{tab:config-vars}
+
+\begin{lstlisting}[language=yaml, caption={Extracto de configuración externalizada (\texttt{application.yml}).}, label={lst:appyml}]
+spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  servlet:
+    multipart:
+      max-file-size: 20MB        # limite de subida de archivos
+      max-request-size: 25MB
+supabase:
+  url: ${SUPABASE_URL:}
+  service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+\end{lstlisting}
+
+\begin{AlertaSeguridad}
+La separación entre \texttt{SUPABASE\_ANON\_KEY} (pública) y
+\texttt{SUPABASE\_SERVICE\_ROLE\_KEY} (privilegiada) es la piedra angular del modelo de
+seguridad de datos. La clave de servicio evade las políticas RLS del motor
+(capítulo~\ref{ch:basedatos}, sección~\ref{sec:rls}, pág.~\pageref{sec:rls}) y, por tanto,
+vive \textbf{únicamente} como variable de entorno del backend, jamás en el \textit{bundle}
+del cliente.
+\end{AlertaSeguridad}
+
+\subsection{Empaquetado monolítico: un único \textit{JAR}}
+\label{subsec:empaquetado}
+
+EthosHub se distribuye como un \textbf{monolito desplegable}: un solo artefacto \textit{JAR}
+que contiene tanto el backend Spring como el \textit{bundle} estático del frontend. El
+\textit{script} \comando{build.sh} orquesta el proceso, ilustrado en la
+figura~\ref{fig:build-monolito}.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.2cm,
+    paso/.style={rectangle, rounded corners=3pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize, align=center, minimum width=2.7cm, minimum height=0.85cm, inner sep=3pt},
+    art/.style={paso, fill=c4Datos!22, draw=c4Datos!70!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[paso] (fe) {npm run build\\\scriptsize Vite + tsc};
+    \node[art, right=of fe] (dist) {\pathbreak{dist/}\\\scriptsize bundle SPA};
+    \node[paso, right=of dist] (cp) {copia a\\\pathbreak{static/}};
+    \node[paso, below=of cp] (mvn) {mvn package\\\scriptsize Spring Boot};
+    \node[art, left=of mvn] (jar) {\texttt{app.jar}\\\scriptsize monolito};
+
+    \draw[rel] (fe) -- (dist);
+    \draw[rel] (dist) -- (cp);
+    \draw[rel] (cp) -- (mvn);
+    \draw[rel] (mvn) -- (jar);
+\end{tikzpicture}
+\caption{Empaquetado monolítico: el \textit{bundle} de la SPA se incrusta en el \textit{JAR} del backend.}
+\label{fig:build-monolito}
+\end{figure}
+
+El proceso consta de cuatro pasos verificados por el \textit{script}:
+
+\begin{enumerate}[noitemsep]
+    \item Compilación del frontend (\comando{npm run build}), que ejecuta \texttt{tsc}
+    (verificación de tipos) y \texttt{vite build} (empaquetado optimizado a \pathbreak{dist/}).
+    \item Verificación de que \pathbreak{dist/} existe (detecta fallos silenciosos del build).
+    \item Copia de \pathbreak{dist/} al directorio \pathbreak{src/main/resources/static/} del
+    backend, previa limpieza del contenido anterior.
+    \item Empaquetado con Maven (\comando{mvn package}), que produce un \textit{JAR}
+    ejecutable que sirve la SPA y la API bajo el mismo origen.
+\end{enumerate}
+
+\begin{NotaTecnica}
+El empaquetado de origen único (\textit{same-origin}) elimina por completo la clase de
+problemas CORS en producción y simplifica el despliegue a un solo proceso. El \textit{flag}
+\texttt{-{}-skip-fe} permite reconstruir solo el backend durante el desarrollo, acelerando
+las iteraciones que no tocan el cliente.
+\end{NotaTecnica}
+
+\subsection{Imagen de ejecución con compilador LaTeX (Tectonic)}
+\label{subsec:docker}
+
+La imagen de contenedor se construye en \textbf{dos etapas} (\textit{multi-stage build}):
+una etapa de compilación con el JDK~17 completo y una etapa de ejecución con solo el JRE.
+La etapa de ejecución instala \textbf{Tectonic 0.15.0} (binario estático \textit{musl},
+sin dependencias adicionales) y \textbf{precalienta su caché de paquetes} compilando un
+documento de prueba (\texttt{warmup.tex}); así, la primera compilación de CV de un usuario
+real no paga la descarga de paquetes LaTeX. La tabla~\ref{tab:docker} resume las etapas.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Etapa} & \sffamily\textbf{Contenido} \\
+\hline
+\texttt{build} (JDK 17) & Compila el proyecto Maven y produce \texttt{app.jar}. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{runtime} (JRE 17) & Instala Tectonic, precalienta su caché y ejecuta \texttt{java -jar app.jar} en el puerto 8080. \\ \hline
+\end{tabularx}
+\label{tab:docker}
+
+Esta imagen es la que materializa la compilación de currículums descrita en la
+secuencia de la figura~\ref{fig:seq-cv} (pág.~\pageref{fig:seq-cv}): el binario LaTeX
+preinstalado es el ``proceso externo'' que transforma el código del CV en un PDF
+descargable.
+
+\subsection{Configuración del cliente HTTP saliente (\texttt{RestClient})}
+\label{subsec:restclient}
+
+Las llamadas \textbf{salientes} del backend hacia servicios externos (Supabase Storage,
+entre otros) se canalizan por instancias de \comando{RestClient} de Spring, configuradas en
+\comando{RestClientConfig}. El \comando{SupabaseStorageService}, por ejemplo, construye su
+cliente con la URL base de Storage y las cabeceras de autorización
+(\texttt{Authorization: Bearer <service\_role>} y \texttt{apikey}) preestablecidas, de modo
+que cada operación de subida o borrado ya viaja autenticada. La tabla~\ref{tab:salientes}
+resume las integraciones salientes y su transporte.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.4cm}|L{3.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Destino} & \sffamily\textbf{Transporte} & \sffamily\textbf{Uso} \\
+\hline
+Supabase Storage & \texttt{RestClient} & Subida/borrado en \textit{bucket} \texttt{profile-assets}. \\ \hline
+\rowcolor{grisTecnico}
+Gemini API & \texttt{HttpURLConnection} & Asistencia IA del CV e \textit{insights} de reclutamiento. \\ \hline
+SMTP (Gmail) & Spring Mail & Correos transaccionales (OTP, confirmaciones). \\ \hline
+\rowcolor{grisTecnico}
+Supabase JWKS & \texttt{JwtDecoder} & Claves públicas para validar JWT. \\ \hline
+\end{tabularx}
+\label{tab:salientes}
+
+\bigskip
+Con esto se cierra el diseño detallado del backend. El capítulo~\ref{ch:frontend}
+(pág.~\pageref{ch:frontend}) documenta el cliente que consume esta API, incluyendo cómo el
+interceptor de Axios reacciona precisamente a los códigos 401/403 aquí definidos, y cómo
+la SPA se incrusta en el mismo \textit{JAR} monolítico que aquí se ha descrito.

@@ -4,6 +4,39 @@
 % 1. Formato para Comandos en línea
 \newcommand{\comando}[1]{{\fontfamily{pcr}\fontsize{9}{10.8}\selectfont\colorbox{grisTecnico}{\texttt{#1}}}}
 
+% 1b. Rutas, endpoints y rutas de archivo con quiebre automático de línea.
+% Evita el desbordamiento (overfull \hbox) de cadenas largas sin espacios,
+% como /api/v1/work-experiences o @/shared/services/apiClient.ts. Se permite
+% el quiebre tras cada separador (/  _  -  .  @) mediante \discretionary.
+\newcommand{\ruta}[1]{{\ttfamily\fontsize{8.5}{10.2}\selectfont\rutaBreak{#1}}}
+\newcommand{\rutaBreak}[1]{\seqsplit{#1}}
+
+% 1c. Versión en línea más legible: respeta los caracteres pero inserta puntos
+% de quiebre lógicos tras los separadores habituales de rutas/identificadores.
+\makeatletter
+\newcommand{\pathbreak}[1]{\texttt{\@pathbreak#1\relax}}
+\def\@pathbreak#1{%
+  \ifx#1\relax\else
+    \ifx#1/\,\discretionary{}{}{}/\discretionary{}{}{}%
+    \else\ifx#1_\_\discretionary{}{}{}%
+    \else\ifx#1-#1\discretionary{}{}{}%
+    \else\ifx#1.#1\discretionary{}{}{}%
+    \else#1\fi\fi\fi\fi
+    \expandafter\@pathbreak
+  \fi}
+\makeatother
+
+% 1d. Tipos de columna con CENTRADO VERTICAL de contenido en cada celda.
+% (m{} de array centra verticalmente; \arraybackslash restaura \\ tras
+% un comando de alineación horizontal.)
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}m{#1}}  % izq. + centro vert.
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}    % centro + centro vert.
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}m{#1}}   % der. + centro vert.
+% Variante de X (tabularx) con centrado vertical de la celda.
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+% \celdaCentro: centra vertical y horizontalmente un dato corto en columnas p/X.
+\newcommand{\celdaCentro}[1]{\multicolumn{1}{c}{#1}}
+
 % 2. COMPONENTES ESPECIALES DE INGENIERÍA
 
 % Nota: Consejos de productividad (Fondo azul claro, icono info)
@@ -88,4 +121,163 @@
 }{
     \endtabularx
     \vspace{0.5cm}
+}
+
+% 4b. Entorno de Tabla para Requisitos Funcionales / No Funcionales (IEEE 830)
+\newenvironment{TablaRF}{
+    \renewcommand{\arraystretch}{1.4}
+    \vspace{0.3cm}
+    \noindent
+    \fontsize{9}{10.8}\selectfont\sffamily
+    \tabularx{\textwidth}{|>{\ttfamily\bfseries\color{colorPrimario}}l|X|c|}
+    \hline
+    \rowcolor{headerTabla}
+    \sffamily\textbf{ID} & \sffamily\textbf{Descripción del requisito} & \sffamily\textbf{Prioridad} \\
+    \hline
+}{
+    \endtabularx
+    \vspace{0.3cm}
+}
+
+% 4c. Diccionario de Datos (longtable multipágina por tabla)
+% Uso: \begin{DiccTabla}{nombre_tabla} filas... \end{DiccTabla}
+% Nota: las columnas usan \raggedright\arraybackslash para permitir el quiebre
+% de línea dentro de la celda y evitar el desbordamiento (overfull) horizontal.
+% Para cadenas largas sin espacios dentro de una celda (rutas, enums separados
+% por '/' o '_') se usa \pathbreak/\seqsplit en la fila concreta.
+\newenvironment{DiccTabla}[1]{%
+    \renewcommand{\arraystretch}{1.3}%
+    \fontsize{7.6}{9.2}\selectfont\sffamily%
+    \setlength{\tabcolsep}{4pt}%
+    \begin{longtable}{%
+        |>{\ttfamily\bfseries\color{colorPrimario}\raggedright\arraybackslash}p{2.7cm}%
+        |>{\ttfamily\raggedright\arraybackslash}p{2.5cm}%
+        |c%
+        |>{\ttfamily\scriptsize\raggedright\arraybackslash}p{2.3cm}%
+        |>{\raggedright\arraybackslash}p{3.5cm}|}
+    \caption{Diccionario de datos — \texttt{core.#1}}\\
+    \hline
+    \rowcolor{headerTabla}
+    \sffamily\textbf{Columna} & \sffamily\textbf{Tipo} & \sffamily\textbf{Nulo} & \sffamily\textbf{Defecto} & \sffamily\textbf{Descripción} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{l}{\sffamily\footnotesize\itshape\color{grisISO}\texttt{core.#1} (continuación)}\\
+    \hline
+    \rowcolor{headerTabla}
+    \sffamily\textbf{Columna} & \sffamily\textbf{Tipo} & \sffamily\textbf{Nulo} & \sffamily\textbf{Defecto} & \sffamily\textbf{Descripción} \\
+    \hline
+    \endhead
+    \hline
+    \multicolumn{5}{r}{\sffamily\tiny\color{grisISO}\textit{continúa en la página siguiente}}\\
+    \endfoot
+    \hline
+    \endlastfoot
+}{%
+    \end{longtable}%
+}
+
+% 5. Bloques de Código Fuente (Java / SQL / TypeScript / YAML)
+% Definición de lenguaje JavaScript/TypeScript (no incluido por defecto en listings)
+\lstdefinelanguage{JavaScript}{
+    keywords={typeof, new, true, false, catch, function, return, null, switch, var,
+        let, const, if, in, of, while, do, else, case, break, import, export, from,
+        await, async, class, extends, default, try, finally, throw, this, void},
+    keywordstyle=\color{codeKeyword}\bfseries,
+    ndkeywords={Promise, AbortController, window, sessionStorage, localStorage, JSON,
+        Math, Date, axios, CustomEvent},
+    ndkeywordstyle=\color{c4Sistema}\bfseries,
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{codeComment}\itshape,
+    stringstyle=\color{codeString},
+    morestring=[b]',
+    morestring=[b]",
+    morestring=[b]`,
+    sensitive=true
+}
+\lstalias{TypeScript}{JavaScript}
+
+\lstdefinestyle{ethosCode}{
+    basicstyle=\ttfamily\fontsize{8}{9.6}\selectfont,
+    extendedchars=true,
+    backgroundcolor=\color{grisTecnico},
+    keywordstyle=\color{codeKeyword}\bfseries,
+    commentstyle=\color{codeComment}\itshape,
+    stringstyle=\color{codeString},
+    numbers=left,
+    numberstyle=\tiny\color{grisISO},
+    numbersep=8pt,
+    frame=single,
+    framesep=5pt,
+    rulecolor=\color{grisISO!50},
+    breaklines=true,
+    breakatwhitespace=true,
+    showstringspaces=false,
+    tabsize=2,
+    captionpos=b,
+    aboveskip=0.6em,
+    belowskip=0.6em,
+    literate=%
+        {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+        {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+        {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+\lstset{style=ethosCode}
+
+% 6. Estilos reutilizables para diagramas TikZ
+\tikzset{
+    % --- Modelo C4 ---
+    c4persona/.style={
+        rectangle, rounded corners=3pt, draw=c4Persona!80!black, very thick,
+        fill=c4Persona, text=white, align=center, font=\sffamily\footnotesize\bfseries,
+        minimum width=2.6cm, minimum height=1.2cm, inner sep=4pt
+    },
+    c4sistema/.style={
+        rectangle, rounded corners=4pt, draw=c4Sistema!80!black, very thick,
+        fill=c4Sistema, text=white, align=center, font=\sffamily\footnotesize\bfseries,
+        minimum width=3.2cm, minimum height=1.4cm, inner sep=5pt
+    },
+    c4contenedor/.style={
+        rectangle, rounded corners=4pt, draw=c4Contenedor!70!black, very thick,
+        fill=c4Contenedor, text=white, align=center, font=\sffamily\scriptsize\bfseries,
+        minimum width=3.0cm, minimum height=1.3cm, inner sep=4pt
+    },
+    c4componente/.style={
+        rectangle, rounded corners=3pt, draw=c4Componente!70!black, thick,
+        fill=c4Componente, text=black, align=center, font=\sffamily\scriptsize,
+        minimum width=2.8cm, minimum height=1.0cm, inner sep=3pt
+    },
+    c4externo/.style={
+        rectangle, rounded corners=4pt, draw=c4Externo!70!black, very thick,
+        fill=c4Externo, text=white, align=center, font=\sffamily\footnotesize\bfseries,
+        minimum width=2.8cm, minimum height=1.2cm, inner sep=4pt
+    },
+    c4datos/.style={
+        cylinder, shape border rotate=90, aspect=0.25, draw=c4Datos!70!black, very thick,
+        fill=c4Datos, text=white, align=center, font=\sffamily\scriptsize\bfseries,
+        minimum width=2.6cm, minimum height=1.4cm, inner sep=4pt
+    },
+    c4limite/.style={
+        rectangle, rounded corners=6pt, draw=c4BordeLim, dashed, thick,
+        inner sep=10pt
+    },
+    c4flecha/.style={-{Stealth[length=2.5mm]}, semithick, draw=grisISO!90!black},
+    c4etiqueta/.style={font=\sffamily\scriptsize\itshape, text=grisISO!90!black, align=center,
+        fill=white, inner sep=1.5pt},
+    % --- Diagramas de flujo ---
+    flujoInicio/.style={
+        rectangle, rounded corners=10pt, draw=flujoInicio!70!black, very thick,
+        fill=flujoInicio!85, text=white, align=center, font=\sffamily\scriptsize\bfseries,
+        minimum width=2.4cm, minimum height=0.8cm
+    },
+    flujoProceso/.style={
+        rectangle, draw=c4Sistema!80!black, thick, fill=c4Componente!40,
+        align=center, font=\sffamily\scriptsize, minimum width=2.6cm, minimum height=0.9cm,
+        inner sep=3pt
+    },
+    flujoDecision/.style={
+        diamond, aspect=2, draw=flujoDecision!70!black, thick, fill=flujoDecision!30,
+        align=center, font=\sffamily\scriptsize, inner sep=1pt, minimum width=2.6cm
+    },
+    flujoFlecha/.style={-{Stealth[length=2mm]}, semithick}
 }

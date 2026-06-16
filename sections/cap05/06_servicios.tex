@@ -1,0 +1,240 @@
+% =============================================================================
+% 5.6 CICLO DE VIDA Y CONSUMO ASÍNCRONO DE SERVICIOS
+% =============================================================================
+\section{Ciclo de Vida y Consumo Asíncrono de Servicios}
+\label{sec:servicios}
+
+Todo el consumo de la API REST del backend (capítulo~\ref{ch:backend},
+pág.~\pageref{ch:backend}) se canaliza a través de una única instancia de Axios
+preconfigurada. Esta sección documenta su configuración, los interceptores que inyectan el
+JWT y gestionan las sesiones expiradas, y el catálogo de servicios de dominio.
+
+\subsection{Configuración del cliente base (\texttt{apiClient.ts})}
+\label{subsec:apiclient}
+
+El cliente HTTP se centraliza en \comando{apiClient.ts}, que todos los servicios de
+\pathbreak{shared/services} reutilizan. Sus parámetros clave figuran en la
+tabla~\ref{tab:apiclient}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.4cm}|L{3.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Parámetro} & \sffamily\textbf{Valor} & \sffamily\textbf{Motivo} \\
+\hline
+\texttt{baseURL} & \pathbreak{/api} o \texttt{VITE\_API\_URL} & Prefijo común; configurable por entorno. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{timeout} & \texttt{8000} ms & Aborta peticiones colgadas y libera el indicador de carga. \\ \hline
+\texttt{headers} & \texttt{Content-Type: application/json} & Contrato JSON por defecto. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{withCredentials} & \texttt{true} & Envía \textit{cookies} de credenciales (token vía \textit{cookie}). \\ \hline
+\end{tabularx}
+\label{tab:apiclient}
+
+\begin{NotaTecnica}
+En desarrollo, Vite expone un \textit{proxy} que reenvía \pathbreak{/api}, \pathbreak{/auth}
+y \pathbreak{/v1} a \pathbreak{http://localhost:8080} (el backend Spring), evitando
+problemas de CORS durante el desarrollo local. En producción no hay \textit{proxy}: el
+mismo \textit{JAR} sirve la SPA y la API bajo el mismo origen.
+\end{NotaTecnica}
+
+La figura~\ref{fig:pipeline-cliente} muestra el recorrido completo de una petición desde
+una vista hasta el backend y de vuelta, atravesando los interceptores que se documentan en
+los apartados siguientes. Es el espejo, en el cliente, del \textit{pipeline} de servidor
+de la figura~\ref{fig:pipeline-http} (pág.~\pageref{fig:pipeline-http}).
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.85cm,
+    etapa/.style={rectangle, rounded corners=3pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize, align=center, minimum width=2.2cm, minimum height=0.8cm, inner sep=2pt},
+    intc/.style={etapa, fill=colorAcento!25, draw=colorAcento!80!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO}]
+    \node[etapa, fill=c4Persona!25] (view) {Vista / hook};
+    \node[etapa, right=of view] (svc) {Servicio\\\scriptsize de dominio};
+    \node[intc, right=of svc] (reqi) {Interceptor\\\scriptsize petición (JWT)};
+    \node[etapa, fill=c4Datos!22, right=of reqi] (be) {Backend\\\scriptsize REST};
+    \node[intc, below=0.8cm of be] (respi) {Interceptor\\\scriptsize respuesta};
+    \node[etapa, fill=c4Persona!25, left=of respi] (store) {Store / UI};
+
+    \draw[rel] (view) -- (svc);
+    \draw[rel] (svc) -- (reqi);
+    \draw[rel] (reqi) -- node[c4etiqueta, above]{\scriptsize Bearer} (be);
+    \draw[rel] (be) -- (respi);
+    \draw[rel] (respi) -- node[c4etiqueta, above]{\scriptsize 401/403?} (store);
+\end{tikzpicture}
+\caption{Pipeline de una petición en el cliente, con sus interceptores.}
+\label{fig:pipeline-cliente}
+\end{figure}
+
+\subsection{Interceptor de peticiones: inyección del JWT}
+\label{subsec:interceptor_req}
+
+El interceptor de petición lee el token (de \texttt{sessionStorage}, con \textit{fallback}
+a \texttt{localStorage}) y lo inyecta dinámicamente como cabecera \comando{Authorization:
+Bearer <token>}, de modo que ningún servicio gestione el token manualmente.
+
+\begin{lstlisting}[language=JavaScript, caption={Interceptor de petición: inyección del JWT (\texttt{apiClient.ts}).}, label={lst:req-interceptor}]
+function readToken(): string | null {
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY)
+      ?? localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+apiClient.interceptors.request.use((config) => {
+  const token = readToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+\end{lstlisting}
+
+\subsection{Interceptor de respuestas: manejo de sesiones expiradas}
+\label{subsec:interceptor_resp}
+
+El interceptor de respuesta concentra la \textbf{lógica de detección de sesión expirada}.
+Ante un \texttt{401} o \texttt{403}, no asume ciegamente que la sesión caducó:
+\textbf{decodifica el \textit{claim} \texttt{exp} del JWT} y lo contrasta con la marca de
+expiración almacenada. Solo si el token está efectivamente expirado emite el evento
+\comando{auth:unauthorized}, que dispara el cierre de sesión y la redirección. La
+figura~\ref{fig:flow-401} formaliza esta decisión.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.75cm and 1.4cm]
+    \node[flujoInicio] (resp) {Respuesta HTTP};
+    \node[flujoDecision, below=of resp] (d1) {¿401 / 403?};
+    \node[flujoProceso, right=2.2cm of d1] (ok) {Propagar al servicio};
+    \node[flujoDecision, below=1.0cm of d1] (d2) {¿exp vencido\\o token ausente?};
+    \node[flujoProceso, right=2.2cm of d2] (keep) {Mantener sesión\\(error puntual)};
+    \node[flujoInicio, fill=bgFail, draw=red!70!black, below=1.0cm of d2] (evt) {Emitir \texttt{auth:unauthorized}};
+
+    \draw[flujoFlecha] (resp) -- (d1);
+    \draw[flujoFlecha] (d1) -- node[c4etiqueta, above]{no} (ok);
+    \draw[flujoFlecha] (d1) -- node[c4etiqueta, left]{sí} (d2);
+    \draw[flujoFlecha] (d2) -- node[c4etiqueta, above]{no} (keep);
+    \draw[flujoFlecha] (d2) -- node[c4etiqueta, left]{sí} (evt);
+\end{tikzpicture}
+\caption{Decisión del interceptor de respuesta ante errores 401/403.}
+\label{fig:flow-401}
+\end{figure}
+
+\clearpage
+\begin{lstlisting}[language=JavaScript, caption={Interceptor de respuesta: distinción entre expiración real y error puntual (\texttt{apiClient.ts}).}, label={lst:resp-interceptor}]
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) {
+      const token     = readToken();
+      const expiresAt = sessionStorage.getItem(EXPIRES_AT_KEY)
+                     ?? localStorage.getItem(EXPIRES_AT_KEY);
+      const isExpiredByStore = !token
+        || (!!expiresAt && Date.now() > Number(expiresAt) * 1000);
+      const isExpiredByJwt   = token ? isJwtExpired(token) : true;
+      if (isExpiredByStore || isExpiredByJwt) {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+\end{lstlisting}
+
+\begin{AvisoNota}
+Esta distinción evita cerrar la sesión del usuario por un \texttt{403} legítimo (p.~ej.,
+acceder a un recurso ajeno protegido por las políticas RLS del capítulo~\ref{ch:basedatos},
+pág.~\pageref{ch:basedatos}) o por un \texttt{401} transitorio: solo se fuerza el
+\textit{logout} cuando el JWT está \textbf{realmente} caducado, mejorando la experiencia y
+evitando expulsiones espurias. El interceptor también libera el indicador de carga global
+ante \textit{timeouts} (\texttt{ECONNABORTED}) y errores de servidor ($\ge$500).
+\end{AvisoNota}
+
+\subsection{Catálogo de servicios de dominio}
+\label{subsec:servicios_catalogo}
+
+La tabla~\ref{tab:servicios-fe} relaciona los servicios de \pathbreak{shared/services} con
+su responsabilidad; todos construidos sobre \texttt{apiClient} y devolviendo \textit{tipos}
+de TypeScript derivados del contrato \texttt{ApiResponse<T>} del backend.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Servicio} & \sffamily\textbf{Responsabilidad} \\
+\hline
+\texttt{authService} & Registro, \textit{login}, sincronización OAuth, refresco de sesión. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{cvStudioService} & Operaciones del CV: edición, asistencia IA, compilación a PDF. \\
+\hline
+\texttt{dashboardService} & Métricas y analíticas del reclutador. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{educationService} · \texttt{experienceService} & Formación y experiencia laboral (con geolocalización). \\
+\hline
+\texttt{fileService} & Subida de archivos e integración con Drive. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{notificationsService} · \texttt{preferencesService} & Notificaciones y preferencias del usuario. \\
+\hline
+\texttt{portfolioService} · \texttt{companyProfileService} & Portafolio público y perfil de empresa. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{adminService} & Operaciones del panel de administración. \\
+\hline
+\end{tabularx}
+\label{tab:servicios-fe}
+
+\clearpage
+\subsection{Resiliencia del cliente y manejo de errores}
+\label{subsec:resiliencia}
+
+El cliente aplica tres mecanismos de resiliencia que, combinados, evitan que un error
+puntual degrade toda la experiencia. La tabla~\ref{tab:resiliencia} los resume.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Mecanismo} & \sffamily\textbf{Función} \\
+\hline
+\texttt{RouteErrorBoundary} & Captura errores de renderizado por ruta y muestra una vista de error en lugar de una pantalla en blanco. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{Suspense} + \textit{skeleton} & Mantiene la interfaz responsiva mientras carga el \textit{chunk} diferido de una página. \\ \hline
+\texttt{AbortController} & Cancela peticiones en vuelo al desmontar la vista, evitando condiciones de carrera. \\ \hline
+\rowcolor{grisTecnico}
+\textit{timeout} 8\,s + \textit{toast} & Aborta peticiones colgadas y notifica al usuario con un \textit{toast} (Sonner). \\ \hline
+\end{tabularx}
+\label{tab:resiliencia}
+
+\paragraph{Cancelación de peticiones.} El módulo exporta \comando{createAbortController()},
+un \textit{factory} de \texttt{AbortController} que las vistas usan para \textbf{cancelar}
+peticiones en vuelo al desmontarse (p.~ej., al navegar fuera de una página de búsqueda),
+evitando actualizaciones de estado sobre componentes ya desmontados y condiciones de
+carrera. El interceptor de respuesta distingue además las cancelaciones
+(\texttt{isCancel}) de los errores reales, de modo que abortar una petición no se
+contabiliza como fallo.
+
+\paragraph{Separación de responsabilidades en el consumo.} El diseño del consumo de
+servicios respeta una separación de responsabilidades nítida que conviene subrayar como
+cierre. La \textbf{vista} (o su \textit{custom hook}) decide \textit{cuándo} pedir datos y
+\textit{qué} hacer con ellos, pero no conoce el detalle del transporte. El \textbf{servicio
+de dominio} traduce esa intención a una llamada concreta y devuelve tipos de TypeScript, sin
+saber nada de tokens ni de sesiones. El \textbf{interceptor} inyecta el JWT y gobierna las
+sesiones expiradas de forma transversal, sin que ningún servicio lo gestione. Y el
+\textbf{store} mantiene el estado resultante, notificando a las vistas suscritas. Esta
+estratificación —vista, servicio, interceptor, store— es la contraparte cliente de las
+capas Controller~/~Service~/~Repository del backend (capítulo~\ref{ch:backend},
+sección~\ref{sec:clases}, pág.~\pageref{sec:clases}): en ambos extremos, cada capa tiene una
+única razón de cambio, lo que hace el sistema predecible y mantenible a lo largo de su
+ciclo de vida, tal como persigue la norma ISO/IEC/IEEE~15289:2024.

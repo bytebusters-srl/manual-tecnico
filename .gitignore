@@ -1,25 +1,62 @@
-# Ignorar archivos generados por LaTeX y otros archivos temporales relacionados con la compilación del documento
+# =============================================================================
+# .gitignore — Manual Técnico EthosHub (LaTeX)
+# Evita subir a GitHub cualquier archivo generado al compilar el PDF.
+# Toda la salida de compilación debe vivir en build/ (ver .latexmkrc / Makefile).
+# =============================================================================
 
-# 1. Ignorar la carpeta de compilación completa (El PDF y los temporales)
+# -----------------------------------------------------------------------------
+# 1. Carpeta de compilación completa (PDF final + todos los temporales)
+# -----------------------------------------------------------------------------
 build/
 
-# 2. Ignorar caché de inyección de código (generado por el paquete minted)
+# -----------------------------------------------------------------------------
+# 2. Caché de inyección de código (paquete minted) en cualquier ubicación
+# -----------------------------------------------------------------------------
 _minted-*/
+**/_minted-*/
 *.pyg
 
-# 3. Archivos temporales clásicos de LaTeX
+# -----------------------------------------------------------------------------
+# 3. Temporales clásicos de LaTeX — en la raíz y en CUALQUIER subcarpeta.
+#    Los patrones sin barra aplican de forma recursiva, de modo que cubren
+#    tanto la raíz como sections/capNN/ si algún compilador los deja sueltos.
+# -----------------------------------------------------------------------------
 *.aux
+*.bbl
+*.bcf
+*.blg
 *.fdb_latexmk
 *.fls
+*.idx
+*.ilg
+*.ind
+*.lof
 *.log
+*.lot
+*.nav
 *.out
+*.run.xml
+*.snm
 *.synctex.gz
+*.synctex(busy)
 *.toc
-*.bbl
-*.blg
+*.vrb
+*.xdv
 *.xml
-*.bcf
 
-# 4. Archivos basura del Sistema Operativo
+# -----------------------------------------------------------------------------
+# 4. Backups de formateadores y editores LaTeX
+# -----------------------------------------------------------------------------
+*.bak
+*-blx.bib
+*.latexindent-*
+indent.log
+
+# -----------------------------------------------------------------------------
+# 5. Basura del sistema operativo y del editor
+# -----------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
+*~
+*.swp

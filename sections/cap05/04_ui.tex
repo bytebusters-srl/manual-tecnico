@@ -1,0 +1,231 @@
+% =============================================================================
+% 5.4 ESTRATEGIA DE INTERFAZ DE USUARIO Y COMPONENTES AVANZADOS
+% =============================================================================
+\section{Estrategia de Interfaz de Usuario y Wireframes}
+\label{sec:ui}
+
+La capa visual de EthosHub equilibra accesibilidad, consistencia y riqueza funcional.
+Esta sección documenta la base de estilización y las integraciones avanzadas —mapas,
+edición de código y gráficas— que diferencian la experiencia.
+
+\subsection{Primitivas accesibles (Radix UI) y estilización atómica (TailwindCSS)}
+\label{subsec:radix_tailwind}
+
+La capa visual combina \textbf{primitivas accesibles} con \textbf{estilización
+utilitaria}. Los componentes de \pathbreak{components/ui} encapsulan primitivas de Radix
+(diálogos, menús, \textit{tooltips}, \textit{slots}) garantizando accesibilidad de origen
+(gestión de foco, navegación por teclado y atributos ARIA), mientras que \textbf{TailwindCSS}
+aplica estilos atómicos sin hojas de estilo ad-hoc. Las utilidades
+\comando{class-variance-authority}, \comando{tailwind-merge} y \comando{clsx} gestionan
+variantes de componentes de forma tipada y sin colisiones de clases.
+
+\paragraph{Sistema de \textit{tokens} de diseño y tema.} Los colores, espaciados y radios
+no se codifican de forma literal: se definen como \textbf{\textit{design tokens}}
+(variables CSS) que TailwindCSS consume. El color primario de marca (\texttt{\#A855F7})
+se declara una sola vez y se propaga al \texttt{theme\_color} de la PWA
+(sección~\ref{subsec:pwa}, pág.~\pageref{subsec:pwa}). Este enfoque centralizado habilita
+el cambio de tema (claro/oscuro) y la coherencia visual sin duplicar reglas de estilo.
+
+\paragraph{Accesibilidad de origen.} Las primitivas de Radix aportan accesibilidad
+\textbf{por construcción}: gestión de foco al abrir y cerrar diálogos, navegación completa
+por teclado, atributos ARIA correctos y soporte de lectores de pantalla. La fuente
+corporativa (\textbf{Sora}) y el respeto a las zonas seguras del dispositivo
+(\texttt{viewport-fit=cover}) completan una experiencia inclusiva y consistente entre
+plataformas.
+
+\subsection{Componentes avanzados integrados}
+\label{subsec:comp_avanzados}
+
+La tabla~\ref{tab:libs-fe} cataloga las librerías especializadas integradas y el módulo
+donde se consumen. A continuación se detallan las tres integraciones de mayor complejidad.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.0cm}|Y|L{3.2cm}|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Librería} & \sffamily\textbf{Uso} & \sffamily\textbf{Módulo} \\
+\hline
+Monaco Editor & Edición de código LaTeX del CV con resaltado. & CV Studio \\
+\hline
+\rowcolor{grisTecnico}
+Recharts & Gráficas: \textit{funnel}, radar de \textit{skills}, KPIs. & Dashboard reclutador \\
+\hline
+Leaflet · react-leaflet & Mapas interactivos y geolocalización. & Experiencia / preferencias \\
+\hline
+\rowcolor{grisTecnico}
+@dnd-kit & \textit{Drag \& drop} del \textit{pipeline} Kanban. & Talent Discovery \\
+\hline
+Framer Motion & Animaciones de transición. & Transversal \\
+\hline
+\rowcolor{grisTecnico}
+html2pdf.js & Exportación a PDF en cliente. & Portafolio / CV \\
+\hline
+react-webcam & Captura de foto desde la cámara. & Adjuntos de chat \\
+\hline
+\rowcolor{grisTecnico}
+Sonner & Notificaciones \textit{toast}. & Transversal \\
+\hline
+\end{tabularx}
+\label{tab:libs-fe}
+
+\subsubsection{Navegación con mapas: Leaflet, OpenStreetMap y geocodificación}
+\label{subsubsec:mapas}
+
+La gestión de experiencia laboral (\pathbreak{/dashboard/experience}) integra un mapa
+interactivo basado en \textbf{react-leaflet} sobre teselas de \textbf{OpenStreetMap}
+servidas por CARTO. El usuario no escribe coordenadas: las \textbf{selecciona en el mapa}
+o busca una dirección, y el sistema resuelve el resto mediante geocodificación. La
+figura~\ref{fig:flow-mapa} formaliza este flujo bidireccional.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.5cm,
+    box/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.8cm, minimum height=0.85cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Persona!25] (user) {Usuario};
+    \node[box, fill=c4Componente!40, right=of user] (map) {\texttt{MapContainer}\\\scriptsize click / marcador};
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black, right=of map] (nom) {Nominatim\\\scriptsize (OSM)};
+    \node[box, fill=c4Componente!40, below=of map] (form) {Formulario\\\scriptsize lat · lng · dirección};
+
+    \draw[rel] (user) -- node[c4etiqueta, above]{\scriptsize clic} (map);
+    \draw[rel] (map) -- node[c4etiqueta, above]{\scriptsize reverse(lat,lng)} (nom);
+    \draw[rel] (nom) to[bend right=20] node[c4etiqueta, right]{\scriptsize dirección} (form);
+    \draw[rel] (map) -- node[c4etiqueta, left]{\scriptsize coordenadas} (form);
+    \draw[rel] (user) to[bend right=30] node[c4etiqueta, below]{\scriptsize búsqueda de texto} (nom);
+\end{tikzpicture}
+\caption{Flujo de geolocalización bidireccional con Leaflet y Nominatim (OpenStreetMap).}
+\label{fig:flow-mapa}
+\end{figure}
+
+El componente realiza dos operaciones de geocodificación contra el servicio
+\textbf{Nominatim} de OpenStreetMap:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Geocodificación inversa} (\texttt{reverse}): al hacer clic en el mapa,
+    convierte las coordenadas \texttt{(lat, lng)} en una dirección textual legible.
+    \item \textbf{Geocodificación directa} (\texttt{search}): al escribir una dirección,
+    obtiene hasta 6 candidatos con sus coordenadas para situar el marcador.
+\end{itemize}
+
+\begin{lstlisting}[language=JavaScript, caption={Geocodificación inversa con Nominatim (\texttt{pages/dashboard/ExperiencePage.tsx}).}, label={lst:nominatim}]
+async function nominatimReverse(lat: number, lng: number): Promise<string> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+  );
+  const data = await res.json();
+  return data.display_name ?? '';
+}
+\end{lstlisting}
+
+\begin{NotaTecnica}
+Los iconos de marcador de Leaflet se resuelven mediante \texttt{new URL(..., import.meta.url)}
+para que Vite los empaquete correctamente en producción; sin esta resolución, el
+empaquetado rompería las rutas relativas a las imágenes del marcador. Además, las
+coordenadas almacenadas enlazan a \pathbreak{openstreetmap.org} para abrir la ubicación en
+una pestaña externa.
+\end{NotaTecnica}
+
+\subsubsection{Edición de código: Monaco Editor en el CV Studio}
+\label{subsubsec:monaco}
+
+El CV Studio embebe \textbf{Monaco Editor} (el motor de edición de VS Code) para escribir
+el código \textbf{LaTeX} del currículum con resaltado de sintaxis, plegado de bloques y
+numeración de líneas. El contenido se sincroniza con el \texttt{cvStudioStore}
+(sección~\ref{subsec:stores}, pág.~\pageref{subsec:stores}) y se envía al backend para su
+compilación a PDF (capítulo~\ref{ch:backend}, figura~\ref{fig:seq-cv},
+pág.~\pageref{fig:seq-cv}).
+
+El CV Studio es el componente cliente con mayor densidad funcional: combina el editor, un
+panel de conversación con la IA y una vista previa del PDF compilado. El
+\texttt{cvStudioService} expone las operaciones \comando{listDocuments},
+\comando{createDocument}, \comando{updateDocument}, \comando{deleteDocument},
+\comando{callAiAssist} (asistencia generativa, que conserva el historial de la
+conversación) y \comando{compileLatexToPdf} (que recibe un \texttt{Blob} binario con el
+PDF). La tabla~\ref{tab:cvstudio} relaciona cada interacción del usuario con su llamada al
+backend.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Interacción} & \sffamily\textbf{Función del servicio} & \sffamily\textbf{Endpoint} \\
+\hline
+Listar mis CV & \texttt{listDocuments()} & \pathbreak{GET /cv-documents} \\ \hline
+\rowcolor{grisTecnico}
+Guardar cambios & \texttt{updateDocument(id)} & \pathbreak{PUT /cv-documents/\{id\}} \\ \hline
+Pedir ayuda IA & \texttt{callAiAssist()} & \pathbreak{POST /cv-documents/ai-assist} \\ \hline
+\rowcolor{grisTecnico}
+Generar PDF & \texttt{compileLatexToPdf()} & \pathbreak{POST /cv-documents/compile-latex} \\ \hline
+\end{tabularx}
+\label{tab:cvstudio}
+
+\begin{AvisoNota}
+La compilación devuelve un \texttt{Blob} de tipo \texttt{application/pdf}, que el cliente
+convierte en una URL de objeto (\texttt{URL.createObjectURL}) para mostrar la vista previa
+sin recargar la página. Si el código LaTeX es inválido, el backend responde \texttt{422}
+(capítulo~\ref{ch:backend}, tabla~\ref{tab:http-status}, pág.~\pageref{tab:http-status}) y
+el cliente muestra el error sin perder el contenido del editor.
+\end{AvisoNota}
+
+\subsubsection{Visualización de datos: Recharts en el dashboard del reclutador}
+\label{subsubsec:recharts}
+
+El \textit{dashboard} del reclutador usa \textbf{Recharts} para tres visualizaciones: un
+\textbf{embudo} (\textit{funnel}) del \textit{pipeline} de candidatos, un \textbf{radar}
+de cobertura de \textit{skills} por candidato y \textbf{KPIs} de actividad. Estas gráficas
+consumen los datos agregados expuestos por \texttt{dashboardService}
+(sección~\ref{subsec:apiclient}, pág.~\pageref{subsec:apiclient}).
+
+\subsubsection{Tablero Kanban de talento con \textit{drag \& drop} (@dnd-kit)}
+\label{subsubsec:kanban}
+
+El descubrimiento de talento (\pathbreak{/recruiter/talent-discovery}) organiza a los
+candidatos en un \textbf{tablero Kanban} con columnas que representan fases del
+\textit{pipeline} de selección. El reclutador arrastra tarjetas entre columnas mediante
+\textbf{@dnd-kit}, una librería accesible de \textit{drag \& drop} que respeta el teclado
+y los lectores de pantalla. Cada movimiento persiste el cambio de fase a través de los
+\textit{endpoints} de \textit{likes}/fases del backend, que aplican las políticas RLS
+asimétricas descritas en el capítulo~\ref{ch:basedatos}
+(sección~\ref{subsec:politicas_rls}, pág.~\pageref{subsec:politicas_rls}).
+
+\subsection{Wireframe de referencia: espacio de trabajo del reclutador}
+\label{subsec:wireframe}
+
+La figura~\ref{fig:wireframe} presenta un \textit{wireframe} de baja fidelidad del
+\textit{dashboard} del reclutador, que integra las visualizaciones Recharts, el tablero
+Kanban y el asistente de IA en una sola vista.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    pane/.style={rectangle, draw=grisISO!70, thick, fill=grisTecnico, font=\sffamily\scriptsize,
+        align=center, inner sep=4pt},
+    lbl/.style={font=\sffamily\scriptsize\bfseries, text=colorPrimario}]
+    % Marco general
+    \draw[draw=grisISO, very thick, rounded corners=3pt] (-0.2,-0.2) rectangle (11.2,6.4);
+    % Barra superior
+    \node[pane, minimum width=11cm, minimum height=0.7cm] at (5.5,5.9) {\lbl Top bar · logo · selector de idioma · perfil};
+    % Sidebar (móvil colapsable)
+    \node[pane, minimum width=2.0cm, minimum height=4.6cm] at (1.0,3.0) {Nav\\(colapsable\\en móvil)};
+    % KPIs
+    \node[pane, minimum width=8.0cm, minimum height=0.9cm] at (6.6,5.0) {\lbl KPIs · candidatos · vistas · mensajes};
+    % Funnel + Radar
+    \node[pane, minimum width=3.9cm, minimum height=1.9cm] at (4.6,3.5) {Embudo\\(Recharts)};
+    \node[pane, minimum width=3.9cm, minimum height=1.9cm] at (8.7,3.5) {Radar de skills\\(Recharts)};
+    % Kanban
+    \node[pane, minimum width=5.9cm, minimum height=1.6cm] at (5.6,1.5) {Kanban (@dnd-kit)\\\scriptsize Nuevo · Revisando · Contactado};
+    % AI insights
+    \node[pane, minimum width=1.9cm, minimum height=1.6cm, fill=colorAcento!18] at (9.7,1.5) {Insights\\IA};
+\end{tikzpicture}
+\caption{Wireframe de baja fidelidad del \textit{dashboard} del reclutador.}
+\label{fig:wireframe}
+\end{figure}

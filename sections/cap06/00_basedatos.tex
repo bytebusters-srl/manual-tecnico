@@ -1,0 +1,191 @@
+% =============================================================================
+% CAPÍTULO 6 — DISEÑO TÉCNICO Y DETALLADO DE LA BASE DE DATOS
+% =============================================================================
+\chapter{Diseño Técnico y Detallado de la Base de Datos}
+\label{ch:basedatos}
+\resumenCapitulo{Este capítulo expone en su totalidad el motor de datos PostgreSQL sobre
+Supabase: los esquemas lógicos y el diagrama entidad-relación, el diccionario de datos
+exhaustivo por columna, la integridad referencial, la estrategia de indexación, la lógica
+programable (\textit{triggers}, funciones y RPC), la concurrencia y las políticas RLS.}
+
+Este capítulo expone en su totalidad el diseño de la base de datos de EthosHub,
+alojada en \textbf{Supabase} sobre \textbf{PostgreSQL 17.6}. Constituye el documento de
+referencia para el administrador de bases de datos (DBA): se documenta la arquitectura
+de almacenamiento, el modelo entidad-relación, el diccionario de datos exhaustivo
+columna por columna, la integridad referencial, la estrategia de indexación, la lógica
+programable (\textit{triggers} y funciones PL/pgSQL), el control de concurrencia y la
+seguridad del motor mediante políticas de seguridad a nivel de fila (RLS).
+
+\begin{NotaTecnica}
+Toda la información de este capítulo fue \textbf{extraída directamente del catálogo de
+sistema} de la instancia de producción (\texttt{pg\_catalog}, \texttt{information\_schema})
+mediante consultas de introspección. Refleja, por tanto, el estado real del esquema en
+la versión 1.1.0 de la plataforma, no un modelo idealizado.
+\end{NotaTecnica}
+
+% =============================================================================
+\section{Arquitectura del Almacenamiento Relacional}
+\label{sec:arq_almacenamiento}
+
+\subsection{Configuración de esquemas lógicos en PostgreSQL}
+\label{subsec:esquemas}
+
+La base de datos no concentra todo en el esquema \texttt{public} (de hecho, este se
+mantiene vacío de tablas de negocio). En su lugar, EthosHub aplica una
+\textbf{segregación por esquemas lógicos} que separa el dominio de aplicación, la
+auditoría histórica, las operaciones administrativas y los esquemas gestionados por la
+plataforma Supabase. La tabla~\ref{tab:esquemas} resume esta organización.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\bfseries\color{colorPrimario}}l|c|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Esquema} & \sffamily\textbf{Tablas} & \sffamily\textbf{Propósito} \\
+\hline
+core & 25 & \textbf{Dominio de aplicación}: perfiles, contenido, interacciones, seguridad. Es el esquema principal sobre el que opera el backend con jOOQ. \\
+\hline
+\rowcolor{grisTecnico}
+history & 2 & \textbf{Auditoría histórica} (SCD Tipo 2): conserva el historial completo de cambios de los perfiles. \\
+\hline
+admin & 1 & \textbf{Operación administrativa}: tabla \texttt{system\_logs} y funciones de métricas, moderación y \textit{logging}. \\
+\hline
+\rowcolor{grisTecnico}
+auth & 23 & Gestionado por \textbf{Supabase Auth}: usuarios, identidades, sesiones, \textit{tokens}. El backend no lo modifica, solo lo referencia. \\
+\hline
+realtime & 9 & Gestionado por \textbf{Supabase Realtime}: suscripciones y mensajería \textit{push}. \\
+\hline
+\rowcolor{grisTecnico}
+storage & 8 & Gestionado por \textbf{Supabase Storage}: \textit{buckets} y objetos (avatares, PDFs). \\
+\hline
+vault & 1 (+1 vista) & \textbf{Supabase Vault}: almacenamiento cifrado de secretos. \\
+\hline
+\end{tabularx}
+\label{tab:esquemas}
+
+\begin{AvisoNota}
+La separación \texttt{core} / \texttt{history} / \texttt{admin} sigue el principio de
+\textbf{mínimo privilegio por dominio}: el código de aplicación opera contra
+\texttt{core}; la auditoría se aísla en \texttt{history} (escrita solo por
+\textit{triggers}); y las operaciones privilegiadas viven en \texttt{admin}, accesibles
+únicamente mediante funciones \texttt{SECURITY DEFINER}.
+\end{AvisoNota}
+
+\paragraph{Extensiones habilitadas.} El motor se apoya en un conjunto acotado de
+extensiones PostgreSQL, resumidas en la tabla~\ref{tab:extensiones}.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Extensión} & \sffamily\textbf{Uso en EthosHub} \\
+\hline
+pgcrypto & Funciones criptográficas; generación de UUID con \texttt{gen\_random\_uuid()}. \\
+\hline
+\rowcolor{grisTecnico}
+uuid-ossp & Generación de identificadores universales únicos (UUID). \\
+\hline
+pg\_trgm & Búsqueda por similitud de trigramas (búsqueda de talento y \textit{skills}). \\
+\hline
+\rowcolor{grisTecnico}
+btree\_gin & Soporte de índices GIN para tipos comunes combinados. \\
+\hline
+supabase\_vault & Almacenamiento seguro de secretos. \\
+\hline
+\rowcolor{grisTecnico}
+pg\_stat\_statements & Estadísticas de planificación y ejecución de consultas. \\
+\hline
+\end{tabularx}
+\label{tab:extensiones}
+
+\subsection{Diagrama Entidad-Relación (DER) a nivel físico}
+\label{subsec:der}
+
+La figura~\ref{fig:der} presenta el DER físico del esquema \texttt{core}, organizado por
+agrupaciones de dominio. La entidad raíz es \comando{profiles\_basic} (perfil
+profesional), de la que cuelga todo el contenido. La autenticación reside en
+\comando{auth.users} (Supabase), referenciada por las dos tablas de perfil.
+
+\vspace{0.2cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    ent/.style={rectangle, draw=c4Sistema!70!black, fill=c4Componente!25, font=\sffamily\scriptsize\bfseries,
+        align=center, minimum width=2.3cm, minimum height=0.65cm, inner sep=2pt},
+    raiz/.style={ent, fill=c4Sistema, text=white},
+    auth/.style={ent, fill=c4Externo!30, draw=c4Externo!70!black},
+    rel/.style={-{Stealth[length=1.6mm]}, semithick, draw=grisISO!80},
+    relid/.style={font=\sffamily\tiny, text=grisISO, fill=white, inner sep=1pt}]
+
+    % Núcleo de identidad
+    \node[auth] (users) at (0,4.2) {auth.users};
+    \node[raiz] (pb) at (-2.4,2.8) {profiles\_basic};
+    \node[raiz] (pc) at (2.4,2.8) {profiles\_company};
+
+    % Contenido profesional (izquierda)
+    \node[ent] (proj) at (-5.4,1.4) {projects};
+    \node[ent] (pmedia) at (-5.4,0.4) {project\_media};
+    \node[ent] (work) at (-5.4,-0.6) {work\_experiences};
+    \node[ent] (acad) at (-5.4,-1.6) {academic\_records};
+    \node[ent] (hskill) at (-3.0,-1.6) {hard\_skills};
+    \node[ent] (sskill) at (-3.0,-0.6) {soft\_skills};
+    \node[ent] (tags) at (-3.0,-2.6) {global\_skill\_tags};
+
+    % Portafolio
+    \node[ent] (pset) at (-0.4,1.4) {portfolio\_settings};
+    \node[ent] (pitem) at (-0.4,0.4) {portfolio\_items};
+    \node[ent] (cv) at (-0.4,-0.6) {cv\_documents};
+    \node[ent] (conn) at (-0.4,-1.6) {profile\_connections};
+    \node[ent] (pref) at (-0.4,-2.6) {profile\_preferences};
+
+    % Interacción reclutador (derecha)
+    \node[ent] (likes) at (3.2,1.4) {profile\_likes};
+    \node[ent] (chat) at (3.2,0.4) {chats};
+    \node[ent] (msg) at (5.6,0.4) {chat\_messages};
+    \node[ent] (notes) at (3.2,-0.6) {recruiter\_candidate\_notes};
+    \node[ent] (views) at (3.2,-1.6) {recruiter\_talent\_views};
+    \node[ent] (notif) at (3.2,-2.6) {notifications};
+
+    % Relaciones identidad
+    \draw[rel] (pb) -- node[relid]{1:1} (users);
+    \draw[rel] (pc) -- node[relid]{1:1} (users);
+
+    % Contenido → profiles_basic
+    \foreach \n in {proj,work,acad,hskill,sskill,cv,conn,pref} \draw[rel] (\n) -- (pb);
+    \draw[rel] (pmedia) -- node[relid]{N:1} (proj);
+    \draw[rel] (hskill) -- node[relid]{N:1} (tags);
+    \draw[rel] (pset) -- node[relid]{1:1} (pb);
+    \draw[rel] (pitem) -- node[relid]{N:1} (pset);
+    \draw[rel] (notif) -- (pb);
+
+    % Interacción → company + basic
+    \draw[rel] (likes) -- (pc);
+    \draw[rel] (chat) -- (pc);
+    \draw[rel] (msg) -- node[relid]{N:1} (chat);
+    \draw[rel] (notes) -- (pc);
+    \draw[rel] (views) -- (pc);
+\end{tikzpicture}
+\caption{Diagrama Entidad-Relación físico del esquema \texttt{core} (agrupado por dominio).}
+\label{fig:der}
+\end{figure}
+
+\begin{NotaTecnica}
+\textbf{Patrón de doble perfil.} EthosHub modela dos tipos de usuario en tablas
+separadas: \comando{profiles\_basic} (profesionales) y \comando{profiles\_company}
+(reclutadores), ambas con PK \texttt{id\_auth} que referencia a \texttt{auth.users(id)}.
+Un \textit{trigger} de exclusividad (\texttt{check\_profile\_exclusivity}) garantiza que
+un mismo usuario no exista simultáneamente como ambos tipos.
+\end{NotaTecnica}
+
+\input{sections/cap06/01_diccionario}
+\input{sections/cap06/02_integridad}
+\input{sections/cap06/03_indexacion}
+\input{sections/cap06/04_programable}
+\input{sections/cap06/05_concurrencia}
+\input{sections/cap06/06_seguridad_rls}

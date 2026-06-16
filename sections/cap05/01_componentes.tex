@@ -1,0 +1,206 @@
+% =============================================================================
+% 5.1 ÁRBOL Y JERARQUÍA DE COMPONENTES DE LA APLICACIÓN
+% =============================================================================
+\section{Árbol y Jerarquía de Componentes de la Aplicación}
+\label{sec:arbol_componentes}
+
+La SPA se estructura como un árbol de componentes React cuya raíz establece el contexto
+global y cuyas hojas son las vistas concretas por rol. Esta sección documenta esa
+jerarquía, desde el punto de entrada hasta los componentes reutilizables.
+
+La arquitectura del frontend impone una \textbf{dirección de dependencias} estricta entre
+capas: las capas superiores dependen de las inferiores, nunca al revés. La
+figura~\ref{fig:capas-fe} representa este flujo, que evita ciclos y mantiene navegable el
+código.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    capa/.style={rectangle, rounded corners=3pt, draw=c4Sistema!70!black, font=\sffamily\scriptsize,
+        align=center, minimum width=8.5cm, minimum height=0.75cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO}]
+    \node[capa, fill=c4Sistema, text=white] (app) at (0,3.6) {\texttt{app/} — providers · router · layouts};
+    \node[capa, fill=c4Contenedor, text=white] (pages) at (0,2.55) {\texttt{pages/} — vistas por rol};
+    \node[capa, fill=c4Componente] (feat) at (0,1.5) {\texttt{features/} — lógica de dominio};
+    \node[capa, fill=c4Componente!60] (shared) at (0,0.45) {\texttt{components/} · \texttt{shared/ui} — componentes};
+    \node[capa, fill=c4Datos!25] (svc) at (0,-0.6) {\texttt{store/} · \texttt{shared/services} — estado y API};
+
+    \draw[rel] (app) -- (pages); \draw[rel] (pages) -- (feat);
+    \draw[rel] (feat) -- (shared); \draw[rel] (shared) -- (svc);
+    \draw[rel] (pages.east) to[bend left=55] (svc.east);
+\end{tikzpicture}
+\caption{Dirección de dependencias entre capas del frontend.}
+\label{fig:capas-fe}
+\end{figure}
+
+\subsection{Estructura raíz: \texttt{app/providers} y \texttt{app/router}}
+\label{subsec:estructura_raiz}
+
+El punto de entrada \comando{main.tsx} monta la aplicación dentro de una pila de
+\textbf{\textit{providers}} globales que establecen el contexto compartido (autenticación,
+internacionalización, notificaciones \textit{toast}), bajo la cual opera el
+\textbf{router}. La figura~\ref{fig:arbol-raiz} muestra esta composición raíz.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    n/.style={rectangle, rounded corners=2pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize, align=center, minimum width=3.0cm, minimum height=0.7cm, inner sep=3pt},
+    root/.style={n, fill=c4Sistema, text=white},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO},
+    level distance=1.0cm, node distance=0.5cm and 0.6cm]
+    \node[root] (main) at (0,4) {\texttt{main.tsx}};
+    \node[n] (prov) at (0,3) {\texttt{app/providers/}\\\scriptsize Auth · i18n · Toaster};
+    \node[n] (router) at (0,2) {\texttt{app/router/}\\\scriptsize index.tsx (RouterProvider)};
+    \node[n] (rsg) at (0,1) {\texttt{RoleScopeGuard}};
+    \node[n] (layouts) at (-3.0,0) {\texttt{app/layouts/}};
+    \node[n] (pages) at (0,0) {\texttt{pages/}};
+    \node[n] (features) at (3.0,0) {\texttt{features/}};
+    \node[n] (comp) at (0,-1) {\texttt{components/} (ui · auth · brand)};
+
+    \draw[rel] (main) -- (prov);
+    \draw[rel] (prov) -- (router);
+    \draw[rel] (router) -- (rsg);
+    \draw[rel] (rsg) -- (layouts);
+    \draw[rel] (rsg) -- (pages);
+    \draw[rel] (rsg) -- (features);
+    \draw[rel] (pages) -- (comp);
+    \draw[rel] (features) -- (comp);
+\end{tikzpicture}
+\caption{Composición raíz de la SPA: \textit{providers}, \textit{router} y guardas.}
+\label{fig:arbol-raiz}
+\end{figure}
+
+\paragraph{Carga diferida por ruta (\textit{code splitting}).} Todas las páginas se
+importan con \comando{React.lazy} y se renderizan dentro de un \comando{<Suspense>} con un
+\textit{skeleton} de carga. Esto, combinado con la división manual de \textit{chunks} de
+Vite (\texttt{vendor: react, react-dom, react-router-dom}), reduce el tamaño del paquete
+inicial y acelera el primer renderizado.
+
+\begin{lstlisting}[language=JavaScript, caption={Carga diferida de páginas por ruta (\texttt{app/router/index.tsx}).}, label={lst:lazy}]
+const CVStudioPage = lazy(() => import('@/pages/dashboard/CVStudioPage'));
+
+function S({ page: Page }: { page: React.ComponentType }) {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Page />
+    </Suspense>
+  );
+}
+\end{lstlisting}
+
+\subsection{\textit{Layouts}, páginas y componentes encapsulados por \textit{feature}}
+\label{subsec:layouts_paginas}
+
+La organización del código separa con claridad las \textbf{capas de presentación}
+(\textit{layouts} y \textit{pages}, por rol) de la \textbf{lógica de dominio}
+(\textit{features}) y de los \textbf{componentes reutilizables}. La
+tabla~\ref{tab:carpetas-fe} describe cada directorio de primer nivel.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Directorio} & \sffamily\textbf{Responsabilidad} \\
+\hline
+\pathbreak{app/} & Composición de la app: \textit{providers}, \textit{layouts} por sección y \textit{router}. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{pages/} & Vistas por rol: \texttt{auth}, \texttt{dashboard}, \texttt{recruiter}, \texttt{admin}, \texttt{public}. \\
+\hline
+\pathbreak{features/} & Lógica de dominio encapsulada: \texttt{portfolio}, \texttt{projects}, \texttt{recruiter}. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{components/} & Componentes reutilizables: \texttt{ui}, \texttt{auth}, \texttt{brand}, \texttt{preferences}. \\
+\hline
+\pathbreak{shared/} & Servicios de API, tipos, utilidades, \textit{landing}, primitivas \texttt{ui}. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{store/} & \textit{Stores} Zustand por dominio. \\
+\hline
+\pathbreak{hooks/} · \pathbreak{lib/} & \textit{Custom hooks} y utilidades de bajo nivel. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{i18n/} & Configuración y traducciones (\texttt{es} / \texttt{en} / \texttt{pt}). \\
+\hline
+\end{tabularx}
+\label{tab:carpetas-fe}
+
+\paragraph{\textit{Layouts} por rol.} Existen cinco \textit{layouts} que componen la
+estructura visual según el contexto de navegación, enumerados en la
+tabla~\ref{tab:layouts}. Cada uno envuelve sus rutas hijas mediante el \comando{<Outlet/>}
+de React Router.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Layout} & \sffamily\textbf{Contexto} \\
+\hline
+\texttt{AuthLayout} & Pantallas de \textit{login}, registro y recuperación de contraseña. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{DashboardLayout} & Espacio de trabajo del profesional (portafolio, CV, proyectos). \\ \hline
+\texttt{RecruiterLayout} & Espacio del reclutador (descubrimiento, \textit{rankings}, chat). \\ \hline
+\rowcolor{grisTecnico}
+\texttt{AdminLayout} & Panel de administración (métricas, moderación). \\ \hline
+\texttt{PublicPortfolioLayout} & Vista pública de portafolios (\pathbreak{/p/:slug}). \\ \hline
+\end{tabularx}
+\label{tab:layouts}
+
+\paragraph{Catálogo de componentes reutilizables.} El directorio \pathbreak{components/}
+agrupa los componentes por familia. La tabla~\ref{tab:componentes} cataloga las familias
+y ejemplos representativos.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{2.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Familia} & \sffamily\textbf{Componentes y propósito} \\
+\hline
+\texttt{ui} & Primitivas de interfaz sobre Radix: botones, diálogos, menús, \textit{tooltips}, \textit{skeletons}. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{auth} & Guardas y formularios de acceso, campos de OTP (\texttt{input-otp}). \\ \hline
+\texttt{brand} & Identidad visual: logotipos, marca de agua, elementos corporativos. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{preferences} & Selectores de idioma y tema, ajustes del usuario. \\ \hline
+\end{tabularx}
+\label{tab:componentes}
+
+\paragraph{Componentes de dominio (\textit{features}).} Frente a los componentes
+genéricos, las \textit{features} encapsulan lógica de negocio específica: \texttt{portfolio}
+(composición del portafolio público), \texttt{projects} (gestión de proyectos y su
+galería de medios) y \texttt{recruiter} (tarjetas de talento, \textit{match ring} de
+afinidad y notas privadas). Esta separación entre componentes genéricos y de dominio es la
+materialización del paradigma \textit{feature-first} en la capa de presentación.
+
+\subsection{\textit{Custom hooks} y lógica reutilizable}
+\label{subsec:hooks}
+
+La lógica con estado que se comparte entre componentes se extrae a \textbf{\textit{custom
+hooks}}, evitando la duplicación y manteniendo los componentes centrados en la
+presentación. El ejemplo canónico es \comando{useAuthFlow}, que encapsula la orquestación
+del proceso de autenticación (validación, llamada al servicio, manejo de errores,
+redirección por rol) y la expone como una API declarativa a las páginas de \textit{login}
+y registro. El \textit{provider} \comando{AuthProvider} complementa este patrón
+inyectando el contexto de sesión en todo el árbol y escuchando el evento
+\comando{auth:unauthorized} emitido por el interceptor de Axios
+(sección~\ref{subsec:interceptor_resp}, pág.~\pageref{subsec:interceptor_resp}) para
+disparar el cierre de sesión global.
+
+\begin{NotaTecnica}
+La regla de los \textit{hooks} (invocación incondicional en el nivel superior del
+componente) la verifica estáticamente el \textit{plugin} \texttt{eslint-plugin-react-hooks}
+(sección~\ref{subsec:eslint}, pág.~\pageref{subsec:eslint}), de modo que una violación se
+detecta en el \textit{linting} y no en tiempo de ejecución.
+\end{NotaTecnica}

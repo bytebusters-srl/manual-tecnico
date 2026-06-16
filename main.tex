@@ -1,20 +1,29 @@
 % main.tex
-% Estructura Principal - Manual Técnico ISO/IEC/IEEE 15289:2024 e IEEE 830
+% Manual Técnico de Arquitectura y Diseño — Plataforma EthosHub v1.4.0
+% Estándar ISO/IEC/IEEE 15289:2024 e IEEE 830
 
-\documentclass[11pt, a4paper, twoside]{report} 
+\documentclass[11pt, a4paper, twoside]{report}
 
-% Carga de configuraciones
+% ==========================================
+% CARGA DE CONFIGURACIONES
+% ==========================================
 \input{config/01_packages}
 \input{config/03_fonts_colors}
 \input{config/02_layout}
 \input{config/04_macros}
+
+% ==========================================
+% METADATOS DE TRAZABILIDAD DOCUMENTAL
+% ==========================================
+\setDocID{MT-ARQ-ETHOSHUB-1.4.0}
+\setDocEstado{Aprobado}
 
 \begin{document}
 
 % ==========================================
 % PORTADA
 % ==========================================
-\include{sections/00_portada}
+\include{sections/front/00_portada}
 
 % ==========================================
 % TABLA DE CONTENIDOS
@@ -22,57 +31,32 @@
 \clearpage
 \begingroup
   \makeatletter \let\ps@plain\ps@empty \makeatother
-  \pagestyle{empty} 
+  \pagestyle{empty}
   \tableofcontents
   \clearpage
 \endgroup
 
-\pagestyle{fancy}   
-\setcounter{page}{1} 
+\pagestyle{fancy}
+\setcounter{page}{1}
 
 % ==========================================
-% CONSISTENCIA Y TRAZABILIDAD (ISO 15289)
+% HISTORIAL DE REVISIONES Y ROLES (ISO 15289)
 % ==========================================
-\chapter*{Historial de Revisiones y Roles}
-\addcontentsline{toc}{chapter}{Historial de Revisiones y Roles}
-% Tabla de versiones, autores y roles (Ej. SME que validó la arquitectura).
+\include{sections/front/01_historial}
 
 % ==========================================
-% 1. IDENTIFICACIÓN DEL SISTEMA
+% CONTENIDO TÉCNICO (ÍNDICE instrucciones.md)
 % ==========================================
-\chapter{Identificación del Sistema}
-% Nombre del producto, versión técnica, stack tecnológico y dependencias base (Ej. Versión de OS, gestores de paquetes en Ubuntu, etc.).
+\include{sections/cap01/00_introduccion} % 1. Introducción y aspectos generales
+\include{sections/cap02/00_requisitos}   % 2. Especificación de requisitos (IEEE 830)
+\include{sections/cap03/00_arquitectura} % 3. Arquitectura global (Modelo C4)
 
-% ==========================================
-% 2. ARQUITECTURA DEL SISTEMA
-% ==========================================
-\chapter{Arquitectura del Sistema}
-% Diagramas de componentes (ej. Modelo C4), patrones de diseño (MVC, Microservicios).
-% Modelo de datos detallado (Diagramas Entidad-Relación).
+\include{sections/cap04/00_backend}      % 4. Diseño detallado del backend
+\include{sections/cap05/00_frontend}     % 5. Diseño detallado del frontend
+\include{sections/cap06/00_basedatos}    % 6. Diseño detallado de la base de datos
 
-% ==========================================
-% 3. REQUERIMIENTOS DEL SISTEMA (IEEE 830)
-% ==========================================
-\chapter{Requerimientos del Sistema}
-% Interfaces externas (Hardware, Software, Red).
-% Atributos de calidad (Rendimiento, Seguridad, Disponibilidad).
-
-% ==========================================
-% 4. ESTRUCTURA DEL CÓDIGO
-% ==========================================
-\chapter{Estructura del Código}
-% Organización de directorios y módulos principales. Convenciones de codificación.
-
-% ==========================================
-% 5. APIS Y SERVICIOS
-% ==========================================
-\chapter{APIs y Servicios}
-% Documentación de endpoints, autenticación y formatos de respuesta.
-
-% ==========================================
-% 6. MANTENIMIENTO Y DIAGNÓSTICO
-% ==========================================
-\chapter{Mantenimiento y Diagnóstico}
-% Sistema de logs internos. Procedimientos de backup, restauración y rollback.
+\include{sections/cap07/00_integraciones} % 7. Integraciones y servicios externos
+\include{sections/cap08/00_vyv}           % 8. Verificación, validación y entornos
+\include{sections/cap09/00_anexos}        % 9. Anexos y repositorio documental
 
 \end{document}

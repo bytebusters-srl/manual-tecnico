@@ -1,0 +1,84 @@
+% =============================================================================
+% 9.1 PLANTILLAS DE FORMATO TÉCNICO
+% =============================================================================
+\section{Plantillas de Formato Técnico}
+\label{sec:plantillas}
+
+Este manual se ha construido con un conjunto de \textbf{plantillas y macros LaTeX}
+estandarizadas que garantizan la consistencia visual y la conformidad con la norma a lo
+largo de los nueve capítulos. Documentarlas aquí permite reutilizarlas en los reportes
+técnicos de \textit{sprint} y en futuras ediciones del manual.
+
+\subsection{Macros de visualización estandarizadas}
+\label{subsec:macros_doc}
+
+Los componentes de ingeniería del documento se definen una sola vez en
+\pathbreak{config/04\_macros.tex} y se reutilizan en todo el manual. La
+tabla~\ref{tab:macros-doc} cataloga las macros y entornos principales.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Macro / Entorno} & \sffamily\textbf{Propósito} \\
+\hline
+\texttt{NotaTecnica} & Caja para dependencias y decisiones de diseño relevantes. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{AvisoNota} & Caja informativa de apoyo a la lectura. \\ \hline
+\texttt{AlertaSeguridad} & Caja de advertencia para riesgos y controles de seguridad. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{DiccTabla} & \textit{Longtable} multipágina para el diccionario de datos (capítulo~\ref{ch:basedatos}). \\ \hline
+\texttt{\textbackslash comando} & Formato monoespaciado resaltado para comandos en línea. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{\textbackslash pathbreak} & Rutas y \textit{endpoints} con quiebre de línea automático. \\ \hline
+\texttt{L} · \texttt{C} · \texttt{R} · \texttt{Y} & Tipos de columna con centrado vertical de celda. \\ \hline
+\end{tabularx}
+\label{tab:macros-doc}
+
+\begin{NotaTecnica}
+La macro \comando{\textbackslash pathbreak} resolvió el desbordamiento de margen
+(\textit{overfull}) de las rutas largas como \pathbreak{/api/v1/work-experiences} o
+\pathbreak{@/shared/services/apiClient.ts}, insertando puntos de quiebre tras cada
+separador. Los tipos de columna \texttt{L/C/R/Y} —basados en \texttt{m\{\}} de \texttt{array}—
+centran verticalmente el contenido de cada celda, requisito de presentación de todas las
+tablas del manual.
+\end{NotaTecnica}
+
+\subsection{Configuración de formato y trazabilidad documental}
+\label{subsec:formato_doc}
+
+La identidad visual y los metadatos de trazabilidad (ISO~15289) se centralizan en los
+ficheros de configuración descritos en la tabla~\ref{tab:config-doc}. Cada página lleva en
+su pie el identificador documental (\texttt{MT-ARQ-ETHOSHUB-1.1.0}), el estado del
+documento y la paginación total, garantizando la trazabilidad exigida por la norma.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Fichero de configuración} & \sffamily\textbf{Responsabilidad} \\
+\hline
+\pathbreak{config/01\_packages.tex} & Paquetes (TikZ, listings, tabularx, longtable, xurl). \\ \hline
+\rowcolor{grisTecnico}
+\pathbreak{config/02\_layout.tex} & Márgenes, encabezados/pies, portadas de capítulo tipo libro. \\ \hline
+\pathbreak{config/03\_fonts\_colors.tex} & Tipografía y paleta corporativa (incluida la paleta C4). \\ \hline
+\rowcolor{grisTecnico}
+\pathbreak{config/04\_macros.tex} & Macros de ingeniería, estilos TikZ y de código. \\ \hline
+\end{tabularx}
+\label{tab:config-doc}
+
+\subsection{Plantillas para reportes de \textit{sprint}}
+\label{subsec:sprint}
+
+Las mismas macros sustentan los \textbf{reportes técnicos de \textit{sprint}} del equipo:
+las cajas \texttt{NotaTecnica} /\texttt{AvisoNota} /\texttt{AlertaSeguridad} estructuran las
+observaciones, los entornos de tabla normalizan la presentación de métricas y los estilos
+de código (\texttt{ethosCode}, con resaltado para Java, SQL y TypeScript) homogeneízan los
+fragmentos incluidos. Esta reutilización asegura que la documentación de proceso comparta
+la misma identidad visual que este manual de producto.

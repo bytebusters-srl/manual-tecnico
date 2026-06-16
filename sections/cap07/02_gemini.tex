@@ -1,0 +1,115 @@
+% =============================================================================
+% 7.2 INTEGRACIÓN CON GOOGLE GEMINI AI
+% =============================================================================
+\section{Integración con Google Gemini AI Service}
+\label{sec:int_gemini}
+
+La inteligencia generativa de EthosHub se apoya en \textbf{Google Gemini 2.5 Flash},
+consumido \textbf{exclusivamente desde el backend} (nunca desde el cliente, para no exponer
+la clave de API). Esta sección documenta el flujo de procesamiento, el mapeo de los
+\textit{payloads} hacia el cliente HTTP y el plan de contingencia ante fallos.
+
+\subsection{Flujo de procesamiento asíncrono de IA}
+\label{subsec:gemini_flujo}
+
+Gemini atiende dos casos de uso, descritos en el capítulo~\ref{ch:backend}
+(sección~\ref{sec:secuencias}, pág.~\pageref{sec:secuencias}): la \textbf{asistencia en
+currículums} (\comando{GeminiAiService}, con historial multi-turno) y las \textbf{analíticas
+de reclutamiento} (\comando{RecruiterAiService}, con cuatro modos —véase la
+tabla~\ref{tab:ia-modos}, pág.~\pageref{tab:ia-modos}). Ambos comparten la misma frontera
+HTTP saliente y la misma disciplina de errores. La figura~\ref{fig:gemini-flujo} resume el
+procesamiento.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.2cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.5cm, minimum height=0.85cm, inner sep=3pt},
+    ext/.style={box, fill=c4Externo!30, draw=c4Externo!70!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Componente!45] (svc) {Servicio IA\\\scriptsize (CV / reclutador)};
+    \node[box, fill=colorAcento!25, right=of svc] (sys) {System\\instruction};
+    \node[box, fill=c4Componente!40, below=of sys] (body) {Request body\\\scriptsize JSON + historial};
+    \node[ext, right=2.0cm of sys] (api) {Gemini API\\\scriptsize generateContent};
+    \node[box, fill=c4Componente!40, below=of api] (parse) {Parse JSON\\\scriptsize extrae texto};
+
+    \draw[rel] (svc) -- node[c4etiqueta, above]{\scriptsize ancla salida} (sys);
+    \draw[rel] (sys) -- (body);
+    \draw[rel] (body) -- (api);
+    \draw[rel] (api) -- node[c4etiqueta, right]{\scriptsize 200 / error} (parse);
+    \draw[rel] (parse) to[bend right=30] node[c4etiqueta, below]{\scriptsize sugerencia} (svc);
+\end{tikzpicture}
+\caption{Flujo de procesamiento de una petición a Gemini desde el backend.}
+\label{fig:gemini-flujo}
+\end{figure}
+
+\subsection{Mapeo técnico de \textit{payloads} hacia el cliente HTTP}
+\label{subsec:gemini_payload}
+
+La comunicación con Gemini usa el \textit{endpoint} \comando{generateContent} del modelo
+\texttt{gemini-2.5-flash}. El \textit{payload} se construye con un \textit{system
+instruction} (que ancla el comportamiento del modelo) y el contenido del usuario; la
+respuesta se navega como árbol JSON para extraer el texto generado. La
+tabla~\ref{tab:gemini-payload} mapea los campos del \textit{request}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Campo del \textit{payload}} & \sffamily\textbf{Contenido} \\
+\hline
+\texttt{system\_instruction} & Instrucción que fija el rol y el formato de salida (LaTeX seguro o JSON de perfiles). \\ \hline
+\rowcolor{grisTecnico}
+\texttt{contents} & Historial multi-turno y la petición actual del usuario. \\ \hline
+\texttt{generationConfig} & \texttt{maxOutputTokens=8192}, \texttt{temperature=0.7}, \texttt{thinkingBudget=0}. \\ \hline
+\end{tabularx}
+\label{tab:gemini-payload}
+
+\begin{NotaTecnica}
+El transporte se realiza con \comando{HttpURLConnection} (\texttt{connectTimeout}~15\,s,
+\texttt{readTimeout}~120\,s). Aunque el índice del proyecto contempla el uso de un cliente
+HTTP de mayor nivel (HttpClient5), la implementación actual emplea el cliente nativo de la
+JVM por simplicidad y ausencia de dependencias adicionales; el contrato externo (URL,
+\textit{payload}, parseo de respuesta) es idéntico e independiente del cliente concreto, de
+modo que un cambio de transporte no alteraría la frontera de integración.
+\end{NotaTecnica}
+
+\subsection{Plan de contingencia y manejo de errores}
+\label{subsec:gemini_contingencia}
+
+La integración con IA es la más frágil del sistema (depende de cuota, disponibilidad del
+proveedor y validez de la clave). Por ello el manejo de errores es \textbf{exhaustivo} y
+\textbf{nunca propaga un 500 genérico}. La tabla~\ref{tab:gemini-contingencia} documenta
+los escenarios de fallo y su tratamiento.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.8cm}|C{1.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Escenario} & \sffamily\textbf{Respuesta} & \sffamily\textbf{Tratamiento} \\
+\hline
+Clave de API ausente & 500 controlado & \texttt{IllegalStateException}: ``Asistente IA no configurado''. \\ \hline
+\rowcolor{grisTecnico}
+Cuota agotada & 429 & Mensaje de límite de uso al usuario. \\ \hline
+Proveedor caído (5xx) & 503 & ``El asistente IA no está disponible''. \\ \hline
+\rowcolor{grisTecnico}
+Otros errores \textit{upstream} & 502 & Código y mensaje del fallo \textit{upstream}. \\ \hline
+Respuesta sin texto & 502 & Se registra el cuerpo y se devuelve error accionable. \\ \hline
+\end{tabularx}
+\label{tab:gemini-contingencia}
+
+\begin{AlertaSeguridad}
+La ausencia de \texttt{GEMINI\_API\_KEY} se trata como un \textbf{error de configuración
+explícito}, no como un fallo silencioso: el sistema avisa con un mensaje claro
+(``añade \texttt{gemini.api-key} en \texttt{application.yml}'') en lugar de enviar
+peticiones inválidas. Esta detección temprana —junto al mapeo de estados de la
+tabla~\ref{tab:gemini-contingencia}— materializa el principio de degradación elegante: una
+funcionalidad de IA caída no derriba el resto de la plataforma.
+\end{AlertaSeguridad}

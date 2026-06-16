@@ -1,0 +1,394 @@
+% =============================================================================
+% CAPÍTULO 2 — ESPECIFICACIÓN DE REQUISITOS DE SOFTWARE (IEEE 830)
+% =============================================================================
+\chapter{Especificación de Requisitos de Software}
+\label{ch:requisitos}
+\resumenCapitulo{Este capítulo especifica, conforme a la norma IEEE~830, los actores y su
+matriz de permisos, los casos de uso principales, y los requisitos funcionales y no
+funcionales del sistema, junto con las restricciones de diseño que acotan la solución.}
+
+Este capítulo especifica los requisitos de la plataforma EthosHub siguiendo la
+práctica recomendada \textbf{IEEE 830-1998} (\textit{Recommended Practice for Software
+Requirements Specifications}). Se modelan primero los casos de uso globales y sus
+actores, se desglosan los requisitos funcionales por dominio técnico y, finalmente, se
+documentan los requisitos no funcionales y las restricciones de diseño que condicionan
+la arquitectura.
+
+La IEEE 830 establece que una buena especificación de requisitos debe ser
+\textbf{correcta, no ambigua, completa, consistente, verificable, modificable y
+trazable}. Para honrar estos atributos, cada requisito de este capítulo cumple las
+siguientes convenciones:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Identificador único} con prefijo de dominio (\texttt{RF-AUTH-01},
+    \texttt{RNF-PERF-02}), que habilita la trazabilidad bidireccional hacia el código
+    y hacia los casos de prueba.
+    \item \textbf{Verificabilidad}: cada requisito se expresa en términos observables y
+    comprobables, evitando adjetivos subjetivos sin criterio asociado.
+    \item \textbf{Prioridad} (Alta / Media), que orienta la planificación incremental
+    por Sprints descrita en el capítulo~\ref{ch:introduccion}.
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\section{Modelado de Casos de Uso Globales}
+\label{sec:casos_uso}
+
+\subsection{Actores del sistema}
+\label{subsec:actores}
+
+EthosHub reconoce tres actores humanos y un conjunto de sistemas externos que
+participan como actores no humanos. La asignación de roles humanos se deriva del
+\textit{claim} de rol del JWT validado y, en el caso del administrador, de la política
+\comando{AdminEmailPolicy} (capítulo~\ref{ch:arquitectura}).
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Actor} & \textbf{Descripción y responsabilidad} \\
+\hline
+Perfil Candidato & Profesional que construye y publica su portafolio, gestiona proyectos, experiencia, formación y habilidades, edita su CV con IA y chatea con reclutadores. Rol \comando{PROFESSIONAL}. \\
+\hline
+\rowcolor{grisTecnico}
+Perfil Reclutador & Usuario que descubre talento, organiza candidatos en un \textit{pipeline} Kanban, consulta \textit{dashboards} e \textit{insights} de IA y contacta candidatos. Rol \comando{RECRUITER}. \\
+\hline
+Perfil Administrador & Operador con privilegios de moderación, métricas, gestión de perfiles y habilidades, y envío de correos. Rol \comando{ADMIN}, restringido a cuentas \comando{adm.*@ethoshub.dev}. \\
+\hline
+\rowcolor{grisTecnico}
+Sistemas externos & Supabase (Auth, BD, Realtime), Google Gemini (IA) y Google Drive (importación). Participan como actores secundarios en los flujos. \\
+\hline
+\end{tabularx}
+
+\vspace{0.4cm}
+La autorización es \textbf{centralizada y declarativa}: el backend deriva el rol del
+\textit{claim} \comando{app\_metadata.role} del JWT y lo expone como \textit{authority}
+de Spring Security (\comando{ROLE\_PROFESSIONAL}, \comando{ROLE\_RECRUITER},
+\comando{ROLE\_ADMIN}). La tabla~\ref{tab:matriz-permisos} sintetiza la matriz de
+permisos sobre los dominios funcionales principales.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|X|c|c|c|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Dominio funcional} & \textbf{Candidato} & \textbf{Reclutador} & \textbf{Administrador} \\
+\hline
+Gestión de perfil y portafolio propios & \faCheckCircle & \faCheckCircle & \faCheckCircle \\
+\hline
+\rowcolor{grisTecnico}
+Contenido profesional (proyectos, skills, CV) & \faCheckCircle & \faTimesCircle & \faCheckCircle \\
+\hline
+Descubrimiento de talento y pipeline Kanban & \faTimesCircle & \faCheckCircle & \faCheckCircle \\
+\hline
+\rowcolor{grisTecnico}
+Insights de IA del reclutador & \faTimesCircle & \faCheckCircle & \faCheckCircle \\
+\hline
+Chat en tiempo real & \faCheckCircle & \faCheckCircle & \faTimesCircle \\
+\hline
+\rowcolor{grisTecnico}
+Moderación, métricas y correos masivos & \faTimesCircle & \faTimesCircle & \faCheckCircle \\
+\hline
+\end{tabularx}
+\label{tab:matriz-permisos}
+
+\begin{NotaTecnica}
+El rol \comando{ADMIN} no se concede únicamente por el \textit{claim} del token: la
+política \comando{AdminEmailPolicy} exige además que el correo verificado coincida con
+el patrón \comando{adm.[a-z]+@ethoshub.dev}. Un \textit{claim} \texttt{role=admin}
+sobre cualquier otro correo es \textbf{degradado} a un rol no privilegiado, mitigando
+escaladas de privilegios por manipulación de metadatos.
+\end{NotaTecnica}
+
+\subsection{Diagramas de Casos de Uso por Dominios de Negocio}
+\label{subsec:diag_casos_uso}
+
+La figura~\ref{fig:casos-uso} sintetiza los casos de uso principales agrupados por el
+actor humano que los inicia. Los sistemas externos aparecen como actores de soporte a
+la derecha.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    actor/.style={c4persona, minimum width=2.2cm, minimum height=1.0cm},
+    uc/.style={draw=c4Sistema!70!black, fill=c4Componente!35, ellipse, font=\sffamily\scriptsize,
+               align=center, minimum width=2.9cm, minimum height=0.85cm, inner sep=2pt},
+    ext/.style={c4externo, minimum width=2.2cm, minimum height=0.9cm, font=\sffamily\scriptsize\bfseries},
+    rel/.style={-{Stealth[length=1.8mm]}, semithick, draw=grisISO!80}
+]
+    % Límite del sistema
+    \node[c4limite, fill=grisTecnico!50, minimum width=8.5cm, minimum height=9.2cm] (sys)
+        at (0,0) {};
+    \node[font=\sffamily\scriptsize\bfseries\color{colorPrimario}, anchor=north] at (sys.north) {Sistema EthosHub};
+
+    % Casos de uso candidato
+    \node[uc] (uc1) at (-0.3,3.4) {Gestionar perfil\\y portafolio};
+    \node[uc] (uc2) at (-0.3,2.3) {Administrar\\proyectos};
+    \node[uc] (uc3) at (-0.3,1.2) {Editar CV\\(CV Studio)};
+    \node[uc] (uc4) at (-0.3,0.1) {Gestionar\\conexiones};
+
+    % Casos de uso reclutador
+    \node[uc] (uc5) at (-0.3,-1.1) {Descubrir\\talento};
+    \node[uc] (uc6) at (-0.3,-2.2) {Pipeline\\Kanban};
+    \node[uc] (uc7) at (-0.3,-3.3) {Generar\\insights IA};
+
+    % Caso de uso compartido
+    \node[uc] (uc8) at (2.7,0.1) {Chat en\\tiempo real};
+
+    % Caso de uso admin
+    \node[uc] (uc9) at (2.7,-2.7) {Moderar y\\administrar};
+
+    % Actores
+    \node[actor] (cand) at (-6.2,2.0) {Perfil\\Candidato};
+    \node[actor] (recl) at (-6.2,-2.2) {Perfil\\Reclutador};
+    \node[actor] (admin) at (6.2,-2.7) {Perfil\\Administrador};
+
+    % Actores externos
+    \node[ext] (supa) at (6.4,2.6) {Supabase};
+    \node[ext] (gem) at (6.4,1.3) {Gemini IA};
+
+    % Relaciones candidato
+    \draw[rel] (cand) -- (uc1);
+    \draw[rel] (cand) -- (uc2);
+    \draw[rel] (cand) -- (uc3);
+    \draw[rel] (cand) -- (uc4);
+    \draw[rel] (cand) -- (uc8);
+
+    % Relaciones reclutador
+    \draw[rel] (recl) -- (uc5);
+    \draw[rel] (recl) -- (uc6);
+    \draw[rel] (recl) -- (uc7);
+    \draw[rel] (recl) -- (uc8);
+
+    % Relaciones admin
+    \draw[rel] (admin) -- (uc9);
+
+    % Soporte externo
+    \draw[rel, dashed] (uc1) -- (supa);
+    \draw[rel, dashed] (uc8) -- (supa);
+    \draw[rel, dashed] (uc3) -- (gem);
+    \draw[rel, dashed] (uc7) -- (gem);
+\end{tikzpicture}
+\caption{Casos de uso globales de EthosHub agrupados por actor de negocio.}
+\label{fig:casos-uso}
+\end{figure}
+
+\subsection{Especificación detallada de casos de uso representativos}
+\label{subsec:cu_detallados}
+
+A modo ilustrativo, se especifican en detalle dos casos de uso de alto valor mediante
+la plantilla extendida de IEEE 830 (precondiciones, flujo principal, flujos
+alternativos y postcondiciones). El resto de casos de uso siguen la misma estructura y
+se documentan operativamente en el Manual de Usuario.
+
+\clearpage
+\subsubsection*{CU-01 — Editar y exportar un CV con asistencia de IA}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}L{3.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Campo} & \textbf{Descripción} \\
+\hline
+Actor principal & Perfil Candidato. \\
+\hline
+\rowcolor{grisTecnico}
+Precondición & El usuario está autenticado (JWT válido) y posee al menos un documento de CV. \\
+\hline
+Flujo principal & (1) El usuario abre el CV Studio. (2) Edita el contenido LaTeX en el editor Monaco. (3) Solicita asistencia a la IA con una instrucción. (4) El backend invoca a Gemini y devuelve la sugerencia. (5) El usuario acepta los cambios. (6) Solicita la compilación a PDF. (7) El backend compila con Tectonic y devuelve el binario. \\
+\hline
+\rowcolor{grisTecnico}
+Flujo alternativo & 4a. Si Gemini falla o agota cuota, \texttt{AiServiceException} traduce el error (429/503/502) y la UI muestra un aviso sin perder el contenido editado. \\
+\hline
+Postcondición & El documento queda persistido y el usuario obtiene un PDF descargable del CV. \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+\subsubsection*{CU-02 — Descubrir talento y gestionar el pipeline}
+
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}L{3.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Campo} & \textbf{Descripción} \\
+\hline
+Actor principal & Perfil Reclutador. \\
+\hline
+\rowcolor{grisTecnico}
+Precondición & El usuario está autenticado con rol \texttt{RECRUITER}. \\
+\hline
+Flujo principal & (1) El reclutador busca talento (filtros o lenguaje natural). (2) Visualiza candidatos con \textit{match ring}. (3) Arrastra un candidato a una fase del Kanban. (4) Añade una nota privada. (5) Opcionalmente solicita \textit{insights} de IA sobre el candidato. \\
+\hline
+\rowcolor{grisTecnico}
+Flujo alternativo & 3a. El movimiento entre fases se persiste mediante un RPC \texttt{SECURITY DEFINER}; ante reintentos concurrentes, la operación es idempotente. \\
+\hline
+Postcondición & El estado del pipeline y las notas quedan persistidos y aislados por reclutador vía RLS. \\
+\hline
+\end{tabularx}
+
+% -----------------------------------------------------------------------------
+\section{Requisitos Funcionales por Dominio Técnico}
+\label{sec:rf}
+
+Los requisitos funcionales se organizan por dominio técnico, en correspondencia
+directa con los paquetes del backend y los módulos del frontend. Cada requisito se
+identifica con el prefijo del dominio para garantizar su trazabilidad hacia el código.
+
+\clearpage
+\subsection{Dominio de Autenticación y Seguridad}
+\label{subsec:rf_auth}
+
+\begin{TablaRF}
+RF-AUTH-01 & Registro de usuarios con diferenciación de rol (\texttt{PROFESSIONAL} / \texttt{RECRUITER}). & Alta \\ \hline
+RF-AUTH-02 & Inicio y cierre de sesión, y autenticación federada vía proveedores OAuth2 (Supabase Auth). & Alta \\ \hline
+RF-AUTH-03 & Recuperación de contraseña mediante código OTP enviado por correo (SMTP). & Alta \\ \hline
+RF-SEC-01 & Cambio de contraseña y de correo electrónico con verificación OTP. & Alta \\ \hline
+RF-SEC-02 & Eliminación de cuenta y exportación de datos del perfil. & Media \\ \hline
+\end{TablaRF}
+
+\subsection{Dominio de Cuentas Principales}
+\label{subsec:rf_profile}
+
+\begin{TablaRF}
+RF-PROF-01 & Gestión del perfil profesional básico: nombre, titular, biografía, foto y disponibilidad. & Alta \\ \hline
+RF-PROF-02 & Gestión de la identidad visual y narrativa profesional (``About Me''). & Alta \\ \hline
+RF-PREF-01 & Configuración de preferencias del usuario, incluyendo idioma (es/en/pt) y notificaciones. & Media \\ \hline
+\end{TablaRF}
+
+\subsection{Dominio de Contenido Profesional}
+\label{subsec:rf_contenido}
+
+\begin{TablaRF}
+RF-PROY-01 & CRUD de proyectos con subida multi-PDF e importación desde Google Drive. & Alta \\ \hline
+RF-EXP-01 & Gestión de experiencia laboral con campos geográficos (línea de tiempo interactiva). & Alta \\ \hline
+RF-EDU-01 & Gestión de registros académicos y certificaciones. & Media \\ \hline
+RF-SKILL-01 & Gestión de habilidades duras y blandas con borrado lógico (\textit{soft-delete}). & Media \\ \hline
+RF-PORT-01 & Ajustes del portafolio público: visibilidad, SEO y protección por contraseña. & Alta \\ \hline
+\end{TablaRF}
+
+\clearpage
+\subsection{Dominio de Interacción Social y Comunicación}
+\label{subsec:rf_social}
+
+\begin{TablaRF}
+RF-CONN-01 & Gestión de conexiones a aplicaciones externas (enfoque \textit{URL-first}, +15 \textit{providers} y personalizados). & Media \\ \hline
+RF-CHAT-01 & Mensajería en tiempo real con presencia, idempotencia de mensajes y borrado lógico. & Alta \\ \hline
+RF-NOTIF-01 & Recepción y gestión de notificaciones reactivas del usuario. & Media \\ \hline
+\end{TablaRF}
+
+\subsection{Dominio de Automatización e Inteligencia}
+\label{subsec:rf_ia}
+
+\begin{TablaRF}
+RF-CV-01 & Editor de CV con asistente de IA Gemini multi-turno y compilación a PDF (LaTeX). & Alta \\ \hline
+RF-RECR-01 & Descubrimiento de talento con búsqueda en lenguaje natural (NLP). & Alta \\ \hline
+RF-RECR-02 & Pipeline Kanban de candidatos con notas privadas y \textit{leaderboard}. & Alta \\ \hline
+RF-RECR-03 & Generación de \textit{insights} de reclutamiento asistidos por IA (Gemini, múltiples modos). & Alta \\ \hline
+\end{TablaRF}
+
+\subsection{Dominio de Soporte y Control}
+\label{subsec:rf_admin}
+
+\begin{TablaRF}
+RF-ADM-01 & Panel de métricas y \textit{dashboard} administrativo. & Alta \\ \hline
+RF-ADM-02 & Moderación de contenido y gestión de perfiles y habilidades. & Alta \\ \hline
+RF-ADM-03 & Envío de correos masivos desde el panel de administración. & Media \\ \hline
+\end{TablaRF}
+
+% -----------------------------------------------------------------------------
+\section{Requisitos No Funcionales y Restricciones de Diseño}
+\label{sec:rnf}
+
+Los requisitos no funcionales (RNF) definen los atributos de calidad que la
+arquitectura debe satisfacer. A diferencia de los funcionales, los RNF no describen
+\textit{qué hace} el sistema, sino \textit{con qué calidad lo hace}, y son los que
+con mayor frecuencia condicionan las decisiones arquitectónicas de fondo. Se agrupan en
+rendimiento, concurrencia y disponibilidad, en línea con los atributos de calidad de la
+norma ISO/IEC 25010.
+
+La figura~\ref{fig:rnf-mapa} relaciona cada categoría de RNF con la decisión
+arquitectónica que la materializa, evidenciando que ningún requisito de calidad queda
+sin un mecanismo de soporte concreto.
+
+\clearpage
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 2.2cm,
+    rnf/.style={c4componente, fill=colorAcento!30, draw=colorAcento!80!black, minimum width=3.0cm},
+    mec/.style={c4componente, fill=c4Componente!40, minimum width=4.2cm}]
+    \node[rnf] (perf) at (0,2) {Rendimiento};
+    \node[rnf] (conc) at (0,0.5) {Concurrencia};
+    \node[rnf] (disp) at (0,-1) {Disponibilidad};
+
+    \node[mec, right=of perf] (m1) {Índices B-Tree + \textit{pre-warm} de Tectonic};
+    \node[mec, right=of conc] (m2) {Pooler de Supabase + idempotencia (V7)};
+    \node[mec, right=of disp] (m3) {\texttt{AiServiceException} + Actuator};
+
+    \draw[c4flecha] (perf) -- node[c4etiqueta, above]{se apoya en} (m1);
+    \draw[c4flecha] (conc) -- (m2);
+    \draw[c4flecha] (disp) -- (m3);
+\end{tikzpicture}
+\caption{Mapa de requisitos no funcionales y sus mecanismos arquitectónicos de soporte.}
+\label{fig:rnf-mapa}
+\end{figure}
+
+\subsection{Rendimiento}
+\label{subsec:rnf_rendimiento}
+
+\begin{TablaRF}
+RNF-PERF-01 & Los \textit{endpoints} REST de lectura deben responder con baja latencia bajo carga nominal, apoyándose en índices B-Tree sobre llaves foráneas. & Alta \\ \hline
+RNF-PERF-02 & La compilación de un CV a PDF debe completarse en pocos segundos gracias al \textit{pre-warm} de la caché de paquetes de Tectonic en la imagen Docker. & Alta \\ \hline
+RNF-PERF-03 & La entrega de mensajes de chat y notificaciones debe percibirse en tiempo real mediante los canales de Supabase Realtime. & Alta \\ \hline
+\end{TablaRF}
+
+\subsection{Concurrencia}
+\label{subsec:rnf_concurrencia}
+
+\begin{TablaRF}
+RNF-CONC-01 & El acceso a PostgreSQL se realiza vía el \textit{pooler} de Supabase, acotando el número de conexiones simultáneas del backend. & Alta \\ \hline
+RNF-CONC-02 & La idempotencia de mensajes (migración V7) evita duplicados ante reintentos concurrentes en el chat. & Alta \\ \hline
+RNF-CONC-03 & La sesión del cliente se aísla por pestaña (\textit{sessionStorage}), permitiendo múltiples sesiones simultáneas sin interferencia. & Media \\ \hline
+\end{TablaRF}
+
+\clearpage
+\subsection{Disponibilidad y Degradación}
+\label{subsec:rnf_disponibilidad}
+
+\begin{TablaRF}
+RNF-DISP-01 & Ante fallos del servicio de IA (Gemini), \texttt{AiServiceException} mapea los errores \textit{upstream} (429$\rightarrow$429, 5xx$\rightarrow$503, otros$\rightarrow$502) sin propagar errores 500 genéricos. & Alta \\ \hline
+RNF-DISP-02 & La ausencia de clave de API o el agotamiento de cuota se manejan de forma controlada, preservando el resto de funcionalidades de la plataforma. & Alta \\ \hline
+RNF-DISP-03 & La salud del sistema se expone mediante Spring Boot Actuator y un \texttt{HealthController} dedicado. & Media \\ \hline
+\end{TablaRF}
+
+\subsection{Restricciones de Diseño}
+\label{subsec:restricciones}
+
+Además de los atributos de calidad, el sistema opera bajo restricciones impuestas por
+decisiones tecnológicas y por el contexto de la convocatoria. Estas restricciones
+acotan el espacio de soluciones admisibles para el diseño detallado.
+
+\begin{TablaRF}
+RES-01 & El despliegue debe producir un único artefacto ejecutable (JAR monolítico); no se admite una infraestructura de microservicios separada. & Alta \\
+RES-02 & La autenticación debe delegarse en Supabase Auth; el backend no almacena contraseñas ni emite tokens. & Alta \\
+RES-03 & El acceso a datos desde el backend debe ser SQL tipado (jOOQ), evitando ORM por reflexión para mantener control explícito sobre las consultas. & Media \\
+RES-04 & El frontend debe compilar a estáticos servibles desde Spring Boot, sin requerir un servidor Node en producción. & Alta \\
+RES-05 & Los secretos (claves de BD, service-role, IA, SMTP) deben externalizarse a variables de entorno y nunca versionarse en producción. & Alta \\
+\end{TablaRF}
+
+\begin{NotaTecnica}
+Los requisitos no funcionales y las restricciones aquí enunciados condicionan
+decisiones arquitectónicas concretas que se justifican en el
+capítulo~\ref{ch:arquitectura} (modelo C4) y se detallan en el diseño de base de datos
+(indexación, concurrencia y RLS) y en el capítulo de entornos de ejecución (gestión de
+secretos).
+\end{NotaTecnica}

@@ -1,0 +1,288 @@
+% =============================================================================
+% 4.2 DIAGRAMAS DE CLASES POR DOMINIOS CRÍTICOS
+% =============================================================================
+\section{Diagramas de Clases por Dominios Críticos}
+\label{sec:clases}
+
+Esta sección documenta la \textbf{estructura estática} del backend: cómo se organizan las
+clases dentro de cada dominio y cómo fluyen los datos entre ellas. El patrón es uniforme
+y deliberado, lo que reduce la carga cognitiva al navegar el código: \textit{todo dominio
+se lee de la misma forma}.
+
+\subsection{El patrón de capas por \textit{feature}}
+\label{subsec:patron_capas}
+
+Cada dominio implementa tres responsabilidades bien separadas, según el principio de
+responsabilidad única (SRP):
+
+\begin{itemize}[noitemsep]
+    \item \comando{@RestController}: frontera HTTP. Recibe DTOs, valida y delega; nunca
+    contiene lógica de negocio ni acceso a datos.
+    \item \comando{@Service}: lógica de negocio y límite transaccional
+    (\comando{@Transactional}). Orquesta repositorios y servicios externos.
+    \item \comando{Repository}: acceso a datos tipado con jOOQ a través de un único
+    \comando{DSLContext} inyectado por Spring.
+\end{itemize}
+
+La figura~\ref{fig:clases-capas} ilustra el patrón sobre tres dominios críticos
+—\texttt{profile}, \texttt{portfolio} y \texttt{cvstudio}— y evidencia la dependencia
+descendente Controller~$\rightarrow$~Service~$\rightarrow$~Repository.
+
+El backend organiza el código en \textbf{paquetes por dominio} bajo
+\pathbreak{com.ethoshub}, cada uno autocontenido. La figura~\ref{fig:paquetes-backend}
+ofrece un mapa de los paquetes reales, agrupados por su rol funcional.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    pkg/.style={rectangle, rounded corners=2pt, draw=c4Sistema!70!black, fill=c4Componente!28,
+        font=\sffamily\scriptsize, align=center, minimum width=2.5cm, minimum height=0.7cm, inner sep=2pt},
+    grp/.style={rectangle, rounded corners=4pt, draw=grisISO!60, dashed, inner sep=7pt},
+    lbl/.style={font=\sffamily\scriptsize\bfseries, text=colorPrimario}]
+    % Identidad
+    \node[pkg] (auth) at (0,3) {auth};
+    \node[pkg] (sec) at (2.6,3) {security};
+    \node[pkg] (prof) at (5.2,3) {profile};
+    \node[pkg] (pref) at (7.8,3) {preferences};
+    \node[lbl] at (3.9,3.7) {Identidad y cuentas};
+    \begin{scope}[on background layer]
+      \node[grp, fit=(auth)(pref), draw=c4Persona!60] {};
+    \end{scope}
+    % Contenido
+    \node[pkg] (proj) at (0,1.4) {project};
+    \node[pkg] (skill) at (2.6,1.4) {skills};
+    \node[pkg] (exp) at (5.2,1.4) {experience};
+    \node[pkg] (edu) at (7.8,1.4) {education};
+    \node[pkg] (port) at (1.3,0.4) {portfolio};
+    \node[pkg] (cv) at (3.9,0.4) {cvstudio};
+    \node[lbl] at (3.9,2.1) {Contenido profesional};
+    % Interacciones
+    \node[pkg] (chat) at (0,-1.1) {chat};
+    \node[pkg] (notif) at (2.6,-1.1) {notifications};
+    \node[pkg] (conn) at (5.2,-1.1) {connections};
+    \node[pkg] (recr) at (7.8,-1.1) {recruiter (+ ai)};
+    \node[lbl] at (3.9,-0.4) {Interacciones};
+    % Transversal
+    \node[pkg, fill=colorAcento!20] (shared) at (1.3,-2.4) {shared};
+    \node[pkg, fill=colorAcento!20] (config) at (3.9,-2.4) {config};
+    \node[pkg, fill=colorAcento!20] (admin) at (6.5,-2.4) {admin};
+    \node[lbl] at (3.9,-1.8) {Transversal};
+\end{tikzpicture}
+\caption{Mapa de paquetes del backend bajo \texttt{com.ethoshub}, agrupados por rol.}
+\label{fig:paquetes-backend}
+\end{figure}
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    cls/.style={rectangle, draw=c4Sistema!70!black, fill=c4Componente!25, font=\sffamily\scriptsize,
+        align=center, minimum width=2.7cm, minimum height=0.8cm, inner sep=3pt},
+    ctrl/.style={cls, fill=c4Componente!50},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO},
+    node distance=0.7cm and 0.5cm
+]
+    \node[ctrl] (pc) at (0,3) {\texttt{ProfileController}};
+    \node[cls] (ps) at (0,1.8) {\texttt{ProfileService}};
+    \node[cls] (pr) at (0,0.6) {\texttt{ProfileRepository}};
+    \node[ctrl] (bc) at (3.6,3) {\texttt{PortfolioSettings}\\\texttt{Controller}};
+    \node[cls] (bs) at (3.6,1.8) {\texttt{PortfolioSettings}\\\texttt{Service}};
+    \node[cls] (br) at (3.6,0.6) {\texttt{PortfolioRepository}};
+    \node[ctrl] (cc) at (7.2,3) {\texttt{CvDocument}\\\texttt{Controller}};
+    \node[cls] (cs) at (7.2,1.8) {\texttt{CvDocumentService}\\\texttt{+ LatexCompileSvc}};
+    \node[cls] (cr) at (7.2,0.6) {\texttt{CvDocumentRepository}};
+
+    \node[cls, fill=c4Datos!25, draw=c4Datos!70!black, minimum width=8.5cm] (dsl) at (3.6,-0.7)
+        {jOOQ \texttt{DSLContext} $\rightarrow$ PostgreSQL \texttt{core}};
+
+    \foreach \a/\b in {pc/ps, ps/pr, bc/bs, bs/br, cc/cs, cs/cr} \draw[rel] (\a) -- (\b);
+    \draw[rel] (pr) -- (dsl); \draw[rel] (br) -- (dsl); \draw[rel] (cr) -- (dsl);
+\end{tikzpicture}
+\caption{Patrón de capas por \textit{feature} en los dominios \texttt{profile}, \texttt{portfolio} y \texttt{cvstudio}.}
+\label{fig:clases-capas}
+\end{figure}
+
+El dominio \texttt{cvstudio} es el de mayor riqueza estructural: su servicio coordina no
+solo el repositorio, sino dos colaboradores especializados —\comando{GeminiAiService}
+(asistencia de IA) y \comando{LatexCompileService} (compilación a PDF)—, ambos
+documentados en la sección~\ref{sec:secuencias} (pág.~\pageref{sec:secuencias}).
+
+\subsection{Modelado de DTOs y registros tipados de jOOQ}
+\label{subsec:dtos}
+
+Los \textbf{objetos de transferencia de datos} (DTOs) se implementan como
+\comando{record} de Java inmutables, con validación declarativa mediante \textbf{Jakarta
+Bean Validation}. Se distinguen dos familias:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{DTOs de petición} (\texttt{*Request}): anotados con restricciones
+    (\comando{@NotBlank}, \comando{@Email}, \comando{@Size}) que Spring evalúa
+    automáticamente al deserializar el cuerpo JSON.
+    \item \textbf{DTOs de respuesta} (\texttt{*Response} / \texttt{*Dto}): proyecciones de
+    solo lectura que el servicio construye a partir de los registros tipados de jOOQ.
+\end{itemize}
+
+Entre ambos median los \textbf{registros generados por jOOQ} a partir del esquema real de
+la base de datos: clases como \texttt{ProfilesBasicRecord} o \texttt{CvDocumentsRecord}
+que ofrecen acceso tipado y verificado en compilación a cada columna, eliminando los
+errores de SQL por cadenas mágicas.
+
+La figura~\ref{fig:dto-flujo} muestra el viaje de los datos desde el DTO de petición
+validado hasta el DTO de respuesta serializado.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.3cm,
+    box/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.6cm, minimum height=0.85cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Componente!40] (req) {\texttt{RegisterRequest}\\\scriptsize @NotBlank @Email @Size};
+    \node[box, fill=colorAcento!30, right=of req] (val) {Bean Validation\\\scriptsize (Spring)};
+    \node[box, fill=c4Componente!40, right=of val] (svc) {\texttt{AuthService}\\\scriptsize lógica};
+    \node[box, fill=c4Datos!25, below=of svc] (db) {jOOQ\\\texttt{ProfilesBasicRecord}};
+    \node[box, fill=c4Componente!40, below=of req] (resp) {\texttt{AuthResponse}\\\scriptsize token + rol};
+
+    \draw[rel] (req) -- node[c4etiqueta, above]{JSON} (val);
+    \draw[rel] (val) -- node[c4etiqueta, above]{válido} (svc);
+    \draw[rel] (svc) -- (db);
+    \draw[rel] (svc) to[bend left=10] (resp);
+    \draw[rel, dashed] (val) to[bend right=30] node[c4etiqueta, left]{400 +\\errores} (resp);
+\end{tikzpicture}
+\caption{Flujo de un DTO de petición validado hacia el DTO de respuesta.}
+\label{fig:dto-flujo}
+\end{figure}
+
+\begin{lstlisting}[language=Java, caption={DTO de registro con validación declarativa (\texttt{auth/dto/RegisterRequest.java}).}, label={lst:registerrequest}]
+public record RegisterRequest(
+    @NotBlank @Email                 String email,
+    @NotBlank @Size(min = 8)         String password,
+    @NotNull                         UserRole role,   // PROFESSIONAL | RECRUITER
+    String firstName, String lastName,
+    String phoneCode, String phoneNumber
+) { }
+\end{lstlisting}
+
+Cuando la validación falla, \comando{MethodArgumentNotValidException} es interceptada por
+el manejador global (sección~\ref{sec:excepciones}, pág.~\pageref{sec:excepciones}) y
+traducida a una respuesta \texttt{400} con la lista de errores por campo, sin que el
+controlador escriba una sola línea de código de validación manual.
+
+\begin{NotaTecnica}
+La elección de \texttt{record} inmutables para los DTOs no es estética: garantiza que un
+objeto de petición no pueda mutar tras su validación, eliminando una clase entera de
+errores (\textit{time-of-check to time-of-use}). La inmutabilidad también facilita el
+razonamiento concurrente, relevante para el modelo \textit{stateless} del servidor.
+\end{NotaTecnica}
+
+\subsection{Resumen de DTOs por dominio crítico}
+\label{subsec:dtos_resumen}
+
+La tabla~\ref{tab:dtos} cataloga los DTOs más representativos y su rol en el contrato de
+la API.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.2cm}|C{1.8cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{DTO} & \sffamily\textbf{Familia} & \sffamily\textbf{Uso} \\
+\hline
+\texttt{RegisterRequest} & Petición & Alta de usuario con rol y datos de contacto. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{LoginRequest} & Petición & Credenciales para \textit{login} con email/contraseña. \\ \hline
+\texttt{AuthResponse} & Respuesta & Token, tipo de token, expiración y rol resuelto. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{CvDocumentRequest} & Petición & Título y código LaTeX del CV a crear/actualizar. \\ \hline
+\texttt{AiAssistRequest} & Petición & Prompt, contenido, modo e historial para Gemini. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{TalentDto} & Respuesta & Proyección de un perfil profesional para reclutadores. \\ \hline
+\texttt{ChatMessageRequest} & Petición & Mensaje, \texttt{chatId} y clave de idempotencia. \\ \hline
+\end{tabularx}
+\label{tab:dtos}
+
+\subsection{Diagrama de clases UML del dominio \texttt{cvstudio}}
+\label{subsec:uml_cvstudio}
+
+La figura~\ref{fig:uml-cvstudio} ofrece una vista UML del dominio más rico del backend,
+con sus atributos y operaciones públicas. Evidencia cómo \comando{CvDocumentService}
+coordina tres colaboradores y traduce entre la entidad de dominio y los DTOs.
+
+\clearpage
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    uml/.style={rectangle, draw=c4Sistema!70!black, fill=white, font=\sffamily\scriptsize,
+        align=left, inner sep=4pt, minimum width=3.6cm},
+    titulo/.style={font=\sffamily\scriptsize\bfseries, text=colorPrimario},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO},
+    agg/.style={-{Diamond[open, length=3mm]}, semithick, draw=grisISO}]
+
+    \node[uml] (ctrl) at (0,3.4) {%
+        {\titulo CvDocumentController}\\\hrule height0.4pt\vspace{2pt}
+        + list() : ApiResponse\\
+        + create(req) : ApiResponse\\
+        + aiAssist(req) : ApiResponse\\
+        + compileLatex(req) : byte[]};
+    \node[uml] (svc) at (0,0.6) {%
+        {\titulo CvDocumentService}\\\hrule height0.4pt\vspace{2pt}
+        - repo : CvDocumentRepository\\
+        - gemini : GeminiAiService\\
+        - latex : LatexCompileService\\\hrule height0.4pt\vspace{2pt}
+        + assist(...) : String\\
+        + compile(...) : byte[]};
+    \node[uml, fill=c4Datos!12] (repo) at (-3.6,-2.4) {%
+        {\titulo CvDocumentRepository}\\\hrule height0.4pt\vspace{2pt}
+        - dsl : DSLContext\\
+        + findByProfile(id)\\
+        + upsert(rec)};
+    \node[uml, fill=colorAcento!10] (gem) at (0,-2.4) {%
+        {\titulo GeminiAiService}\\\hrule height0.4pt\vspace{2pt}
+        + generate\\Assistance(...)};
+    \node[uml, fill=colorAcento!10] (tex) at (3.6,-2.4) {%
+        {\titulo LatexCompileService}\\\hrule height0.4pt\vspace{2pt}
+        + compile(code,\\\ \ fotoUrl)};
+
+    \draw[rel] (ctrl) -- (svc);
+    \draw[agg] (svc) -- (repo);
+    \draw[agg] (svc) -- (gem);
+    \draw[agg] (svc) -- (tex);
+\end{tikzpicture}
+\caption{Diagrama de clases UML del dominio \texttt{cvstudio} (atributos y operaciones).}
+\label{fig:uml-cvstudio}
+\end{figure}
+
+\subsection{Acceso a datos tipado con jOOQ}
+\label{subsec:jooq}
+
+Los repositorios no escriben SQL como cadenas de texto: usan el \textbf{DSL tipado} de
+jOOQ, generado a partir del esquema real de la base de datos. El \textit{listado}
+\ref{lst:jooq} muestra un repositorio representativo donde cada nombre de tabla y columna
+está verificado en tiempo de compilación.
+
+\begin{lstlisting}[language=Java, caption={Acceso tipado con jOOQ en un repositorio (patrón real).}, label={lst:jooq}]
+@Repository
+public class CvDocumentRepository {
+    private final DSLContext dsl;
+    public List<CvDocumentsRecord> findByProfile(UUID profileId) {
+        return dsl.selectFrom(CV_DOCUMENTS)
+                  .where(CV_DOCUMENTS.PROFILE_ID.eq(profileId))
+                  .and(CV_DOCUMENTS.DELETED_AT.isNull())   // borrado logico
+                  .orderBy(CV_DOCUMENTS.UPDATED_AT.desc())
+                  .fetch();
+    }
+}
+\end{lstlisting}
+
+\clearpage
+\begin{NotaTecnica}
+La ventaja decisiva de jOOQ sobre el SQL textual o un ORM por reflexión es la
+\textbf{seguridad en compilación}: si una columna se renombra en la base de datos y se
+regeneran las clases, cualquier consulta que la referencie deja de compilar. Esto convierte
+una clase entera de errores de tiempo de ejecución en errores detectados antes del
+despliegue, en línea con la estrategia de verificación del capítulo~8.
+\end{NotaTecnica}

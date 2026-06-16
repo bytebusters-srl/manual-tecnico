@@ -1,0 +1,120 @@
+% =============================================================================
+% 5.2 USER FLOWS (FLUJOS DE NAVEGACIÓN DEL PERFIL DE USUARIO)
+% =============================================================================
+\section{User Flows (Flujos de Navegación del Perfil de Usuario)}
+\label{sec:user_flows}
+
+Los \textit{user flows} modelan la experiencia de navegación de los dos perfiles
+principales del sistema, trazando el camino desde la entrada hasta el objetivo de valor de
+cada rol. Estos flujos materializan los casos de uso definidos en el
+capítulo~\ref{ch:requisitos} (pág.~\pageref{ch:requisitos}).
+
+\subsection{Registro, configuración inicial y carga de portafolio}
+\label{subsec:flow_registro}
+
+La figura~\ref{fig:flow-onboarding} representa el embudo de incorporación de un
+profesional: desde el registro hasta la publicación de su portafolio, incluyendo la
+ramificación por rol que ocurre inmediatamente tras el alta.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.8cm and 1.1cm]
+    \node[flujoInicio] (start) {Registro};
+    \node[flujoDecision, below=of start] (rol) {¿Rol?};
+    \node[flujoProceso, below left=0.9cm and 0.2cm of rol] (prof) {Dashboard\\Profesional};
+    \node[flujoProceso, below right=0.9cm and 0.2cm of rol] (recl) {Dashboard\\Reclutador};
+    \node[flujoProceso, below=of prof] (perfil) {Configurar perfil\\(bio, foto, skills)};
+    \node[flujoProceso, below=of perfil] (proy) {Cargar proyectos\\y experiencia};
+    \node[flujoProceso, below=of proy] (ajustes) {Ajustes de\\portafolio (SEO)};
+    \node[flujoInicio, fill=c4Sistema, below=of ajustes] (pub) {Portafolio público};
+
+    \draw[flujoFlecha] (start) -- (rol);
+    \draw[flujoFlecha] (rol) -- node[c4etiqueta, left]{PROFESSIONAL} (prof);
+    \draw[flujoFlecha] (rol) -- node[c4etiqueta, right]{RECRUITER} (recl);
+    \draw[flujoFlecha] (prof) -- (perfil);
+    \draw[flujoFlecha] (perfil) -- (proy);
+    \draw[flujoFlecha] (proy) -- (ajustes);
+    \draw[flujoFlecha] (ajustes) -- (pub);
+\end{tikzpicture}
+\caption{Flujo de incorporación del profesional: del registro al portafolio público.}
+\label{fig:flow-onboarding}
+\end{figure}
+
+El paso de \textbf{configurar experiencia} incorpora una sub-experiencia geolocalizada:
+en \pathbreak{/dashboard/experience} el usuario sitúa cada empleo en un mapa interactivo
+(Leaflet) y el sistema deriva la dirección textual por geocodificación inversa, como se
+detalla en la sección~\ref{subsec:comp_avanzados} (pág.~\pageref{subsec:comp_avanzados}).
+
+\subsection{Embudo del reclutador (búsqueda, filtrado y analíticas)}
+\label{subsec:flow_reclutador}
+
+El reclutador opera un \textbf{embudo de descubrimiento}: parte de una búsqueda amplia
+(filtros estructurados o lenguaje natural traducido por IA), refina hacia un
+\textit{pipeline} gestionable mediante un tablero Kanban, y culmina en analíticas e
+\textit{insights} generados por IA. La figura~\ref{fig:flow-recruiter} lo ilustra.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.75cm and 1.4cm]
+    \node[flujoInicio] (start) {Talent Discovery};
+    \node[flujoProceso, below=of start] (search) {Buscar (filtros / NLP)};
+    \node[flujoProceso, below=of search] (kanban) {Organizar en Kanban\\(drag \& drop)};
+    \node[flujoProceso, below=of kanban] (notas) {Notas privadas\\+ match ring};
+    \node[flujoProceso, below=of notas] (dash) {Dashboard\\(funnel · radar · KPIs)};
+    \node[flujoInicio, fill=c4Sistema, below=of dash] (ai) {Insights IA + chat};
+
+    \draw[flujoFlecha] (start) -- (search);
+    \draw[flujoFlecha] (search) -- (kanban);
+    \draw[flujoFlecha] (kanban) -- (notas);
+    \draw[flujoFlecha] (notas) -- (dash);
+    \draw[flujoFlecha] (dash) -- (ai);
+\end{tikzpicture}
+\caption{Embudo de descubrimiento de talento del reclutador.}
+\label{fig:flow-recruiter}
+\end{figure}
+
+\begin{AvisoNota}
+El paso \textbf{Buscar (NLP)} invoca el modo \texttt{nlp\_search} del motor de IA
+(capítulo~\ref{ch:backend}, tabla~\ref{tab:ia-modos}, pág.~\pageref{tab:ia-modos}), que
+traduce una frase como ``desarrolladores React senior en Bolivia'' a un objeto de filtros
+estructurados que el frontend aplica sobre el catálogo de talento. La IA no consulta la
+base de datos: solo estructura la intención del reclutador.
+\end{AvisoNota}
+
+\subsection{Visitante anónimo de un portafolio público}
+\label{subsec:flow_visitante}
+
+El tercer flujo relevante es el del \textbf{visitante no autenticado} que consulta un
+portafolio compartido (\pathbreak{/p/:slug}). Este recorrido no requiere sesión y puede
+estar protegido por contraseña según los ajustes del dueño. La
+figura~\ref{fig:flow-visitante} lo modela.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.75cm and 1.1cm]
+    \node[flujoInicio] (start) {Visita \pathbreak{/p/:slug}};
+    \node[flujoDecision, below=of start] (pwd) {¿Protegido\\por clave?};
+    \node[flujoProceso, right=2.4cm of pwd] (gate) {Pantalla de\\contraseña};
+    \node[flujoDecision, below=1.0cm of pwd] (pub) {¿Publicado?};
+    \node[flujoProceso, right=2.4cm of pub] (404) {No encontrado\\(404)};
+    \node[flujoInicio, fill=c4Sistema, below=1.0cm of pub] (view) {Portafolio renderizado};
+
+    \draw[flujoFlecha] (start) -- (pwd);
+    \draw[flujoFlecha] (pwd) -- node[c4etiqueta, above]{sí} (gate);
+    \draw[flujoFlecha] (gate) |- node[c4etiqueta, near start]{ok} (pub);
+    \draw[flujoFlecha] (pwd) -- node[c4etiqueta, left]{no} (pub);
+    \draw[flujoFlecha] (pub) -- node[c4etiqueta, above]{no} (404);
+    \draw[flujoFlecha] (pub) -- node[c4etiqueta, left]{sí} (view);
+\end{tikzpicture}
+\caption{Flujo del visitante anónimo a un portafolio público.}
+\label{fig:flow-visitante}
+\end{figure}
+
+Este flujo consume exclusivamente \textit{endpoints} públicos
+(\pathbreak{/api/v1/portfolio/public/**}) declarados en \texttt{PUBLIC\_PATHS}
+(capítulo~\ref{ch:backend}, tabla~\ref{tab:public-paths}, pág.~\pageref{tab:public-paths}),
+sin token; las políticas RLS del motor garantizan que solo se exponga contenido marcado
+como público y publicado.

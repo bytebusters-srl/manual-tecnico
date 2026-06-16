@@ -1,0 +1,198 @@
+% =============================================================================
+% 5.3 SITEMAP, SISTEMA DE ENRUTAMIENTO Y CONDICIÓN PWA
+% =============================================================================
+\section{Sitemap y Sistema de Enrutamiento}
+\label{sec:sitemap}
+
+El enrutamiento gobierna qué vista se renderiza según la URL y el nivel de acceso del
+usuario. Esta sección documenta el mapa de sitio completo, las guardas de protección, las
+reglas responsivas y la condición de Aplicación Web Progresiva de la SPA.
+
+\subsection{Rutas públicas, privadas y protegidas por roles (React Router 6)}
+\label{subsec:rutas}
+
+El enrutamiento usa \textbf{React Router DOM 6.22} con un árbol de rutas anidadas por
+\textit{layout}. La protección se compone como envolturas (\textit{wrappers}) de tres
+niveles, descritas en la tabla~\ref{tab:guardas}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Guarda} & \sffamily\textbf{Responsabilidad} \\
+\hline
+\texttt{ProtectedRoute} & Exige autenticación y un rol permitido (\texttt{allowedRoles}); redirige a \pathbreak{/login} si no hay sesión válida. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{RoleScopeGuard} & Acota la navegación del administrador a \pathbreak{/admin/*}; envuelve todo el árbol de rutas. \\ \hline
+\texttt{RouteErrorBoundary} & Captura errores de renderizado por ruta y muestra una vista de error en vez de una pantalla en blanco. \\ \hline
+\end{tabularx}
+\label{tab:guardas}
+
+La tabla~\ref{tab:rutas-fe} cataloga las rutas reales agrupadas por \textit{layout} y
+nivel de acceso, extraídas de \pathbreak{app/router/index.tsx}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.25}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{2.6cm}|L{4.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Acceso} & \sffamily\textbf{Ruta} & \sffamily\textbf{Vista} \\
+\hline
+Pública (auth) & \pathbreak{/login} · \pathbreak{/register} · \pathbreak{/forgot-password} & Entrada al sistema. \\ \hline
+\rowcolor{grisTecnico}
+Pública (auth) & \pathbreak{/oauth2/callback} · \pathbreak{/oauth-success} & Retorno del flujo OAuth de Supabase. \\ \hline
+Pública & \pathbreak{/explorar} · \pathbreak{/p/:slug} & Exploración y portafolio público. \\ \hline
+\rowcolor{grisTecnico}
+Pública & \pathbreak{/privacidad} · \pathbreak{/terminos} & Páginas legales. \\ \hline
+Profesional & \pathbreak{/dashboard/portfolio} · \pathbreak{/dashboard/cv-studio} & Portafolio y editor de CV. \\ \hline
+\rowcolor{grisTecnico}
+Profesional & \pathbreak{/dashboard/projects} · \pathbreak{/dashboard/projects/:projectId} & Proyectos y su detalle. \\ \hline
+Profesional & \pathbreak{/dashboard/experience} · \pathbreak{/dashboard/education} & Experiencia y formación. \\ \hline
+\rowcolor{grisTecnico}
+Profesional & \pathbreak{/dashboard/chat} · \pathbreak{/dashboard/chat/:chatId} & Chat con reclutadores. \\ \hline
+Reclutador & \pathbreak{/recruiter/talent-discovery} & Descubrimiento de talento. \\ \hline
+\rowcolor{grisTecnico}
+Reclutador & \pathbreak{/recruiter/dashboard} · \pathbreak{/recruiter/rankings} & Analíticas y \textit{leaderboard}. \\ \hline
+Reclutador & \pathbreak{/recruiter/chat} & Chat con candidatos. \\ \hline
+\rowcolor{grisTecnico}
+Admin & \pathbreak{/admin/*} & Métricas, perfiles, moderación, \textit{skills}, correo. \\ \hline
+\end{tabularx}
+\label{tab:rutas-fe}
+
+La figura~\ref{fig:sitemap} sintetiza el mapa de sitio por nivel de acceso y la guarda
+responsable de cada zona.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    grp/.style={rectangle, rounded corners=4pt, draw, font=\sffamily\scriptsize\bfseries, inner sep=8pt},
+    r/.style={font=\sffamily\scriptsize, align=left, text=grisISO!90!black}]
+    \node[grp, draw=flujoInicio!70!black, fill=flujoInicio!12] (pub) at (-4.6,0) {
+        \begin{tabular}{l}\textbf{\textcolor{flujoInicio!60!black}{Públicas}}\\[2pt]
+        \texttt{/login · /register}\\ \texttt{/forgot-password}\\ \texttt{/oauth2/callback}\\
+        \texttt{/explorar · /talent}\\ \texttt{/p/:slug}\\ \texttt{/privacidad}\end{tabular}};
+    \node[grp, draw=c4Sistema!70!black, fill=c4Componente!18] (priv) at (0,0) {
+        \begin{tabular}{l}\textbf{\textcolor{c4Sistema}{Privadas (auth)}}\\[2pt]
+        \texttt{/dashboard/*}\\ \texttt{/recruiter/*}\\ \texttt{ProtectedRoute}\\ \scriptsize(redirige a /login\\ \scriptsize si expira el JWT)\end{tabular}};
+    \node[grp, draw=colorAcento!80!black, fill=colorAcento!18] (adm) at (4.4,0) {
+        \begin{tabular}{l}\textbf{\textcolor{colorAcento!50!black}{Rol ADMIN}}\\[2pt]
+        \texttt{/admin/*}\\ \texttt{RoleScopeGuard}\\ \scriptsize(el admin no puede\\ \scriptsize salir de /admin)\end{tabular}};
+\end{tikzpicture}
+\caption{Mapa de sitio por nivel de acceso y guardas de enrutamiento.}
+\label{fig:sitemap}
+\end{figure}
+
+\begin{NotaTecnica}
+La guarda \comando{RoleScopeGuard} implementa una regla de negocio estricta: un perfil
+administrador opera \textbf{exclusivamente} dentro de \pathbreak{/admin/*}; cualquier
+intento de navegar fuera lo redirige al \textit{dashboard} de administración. El acceso
+inverso (un no-admin a \pathbreak{/admin}) lo bloquea \texttt{ProtectedRoute} con su lista
+\texttt{allowedRoles}. Así, la frontera de roles se aplica en el cliente como primera
+barrera, y se reafirma en el servidor (capítulo~\ref{ch:backend}) como autoridad final.
+\end{NotaTecnica}
+
+\paragraph{Árbol de anidamiento de rutas.} React Router 6 compone las rutas como un
+\textbf{árbol}: el \texttt{RoleScopeGuard} envuelve todo, y bajo él cada \textit{layout}
+agrupa sus rutas hijas, que se renderizan en el \comando{<Outlet/>} del \textit{layout}.
+La figura~\ref{fig:route-tree} representa esta jerarquía.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    n/.style={rectangle, rounded corners=2pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize, align=center, minimum height=0.6cm, inner sep=3pt},
+    guard/.style={n, fill=colorAcento!25, draw=colorAcento!80!black},
+    leaf/.style={n, fill=grisTecnico, draw=grisISO!60},
+    rel/.style={-{Stealth[length=1.6mm]}, semithick, draw=grisISO}]
+    \node[guard] (rsg) at (0,3.2) {RoleScopeGuard (raíz)};
+    \node[n] (auth) at (-4.2,2.0) {AuthLayout};
+    \node[guard] (pr1) at (-1.4,2.0) {ProtectedRoute\\\scriptsize professional};
+    \node[guard] (pr2) at (1.8,2.0) {ProtectedRoute\\\scriptsize recruiter};
+    \node[guard] (pr3) at (4.6,2.0) {ProtectedRoute\\\scriptsize admin};
+    \node[leaf] (al) at (-4.2,0.7) {login · register\\forgot-password};
+    \node[leaf] (dl) at (-1.4,0.7) {DashboardLayout\\\scriptsize /dashboard/*};
+    \node[leaf] (rl) at (1.8,0.7) {RecruiterLayout\\\scriptsize /recruiter/*};
+    \node[leaf] (adl) at (4.6,0.7) {AdminLayout\\\scriptsize /admin/*};
+
+    \draw[rel] (rsg) -- (auth); \draw[rel] (rsg) -- (pr1);
+    \draw[rel] (rsg) -- (pr2); \draw[rel] (rsg) -- (pr3);
+    \draw[rel] (auth) -- (al); \draw[rel] (pr1) -- (dl);
+    \draw[rel] (pr2) -- (rl); \draw[rel] (pr3) -- (adl);
+\end{tikzpicture}
+\caption{Árbol de anidamiento de rutas y guardas de React Router 6.}
+\label{fig:route-tree}
+\end{figure}
+
+\subsection{Reglas de visualización responsiva}
+\label{subsec:responsive}
+
+El \textit{layout} general aplica una especificación responsiva deliberada respecto al
+\textbf{Sidebar} de navegación, descrita en la tabla~\ref{tab:responsive}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{2.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Dispositivo} & \sffamily\textbf{Comportamiento del Sidebar} \\
+\hline
+Escritorio & La navegación principal se integra en el \textit{layout} sin un Sidebar lateral persistente, maximizando el área de contenido. \\
+\hline
+\rowcolor{grisTecnico}
+Móvil & El Sidebar se renderiza de forma exclusiva como navegación colapsable, adaptada a la interacción táctil. \\
+\hline
+\end{tabularx}
+\label{tab:responsive}
+
+\subsection{Condición de Aplicación Web Progresiva (PWA)}
+\label{subsec:pwa}
+
+EthosHub es una \textbf{Aplicación Web Progresiva}: puede instalarse en la pantalla de
+inicio del dispositivo y comportarse como una aplicación nativa. La condición PWA se
+sustenta en el \textit{Web App Manifest} (\pathbreak{public/manifest.webmanifest}) y en
+las \textit{meta} de capacidad nativa declaradas en \pathbreak{index.html}. La
+tabla~\ref{tab:pwa-manifest} documenta los campos clave del manifiesto real.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.2cm}|L{3.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Campo} & \sffamily\textbf{Valor} & \sffamily\textbf{Efecto} \\
+\hline
+\texttt{display} & \texttt{standalone} & Se abre sin barra de navegador, como app nativa. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{orientation} & \texttt{portrait-primary} & Orientación vertical preferente en móvil. \\ \hline
+\texttt{start\_url} · \texttt{scope} & \pathbreak{/} & Punto de arranque y ámbito de la instalación. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{theme\_color} & \texttt{\#A855F7} & Color de la barra de estado (sincronizado con la paleta). \\ \hline
+\texttt{background\_color} & \texttt{\#FCFCFC} & Color de la pantalla de arranque. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{icons} & 192 / 512 px \texttt{maskable} & Iconos adaptativos para la pantalla de inicio. \\ \hline
+\end{tabularx}
+\label{tab:pwa-manifest}
+
+\paragraph{Capacidades nativas en iOS y Android.} Además del manifiesto, el documento
+\pathbreak{index.html} declara las \textit{meta} \comando{apple-mobile-web-app-capable},
+\comando{apple-mobile-web-app-status-bar-style} (\texttt{black-translucent}) y
+\comando{apple-touch-icon}, junto con un \textit{viewport} con \texttt{viewport-fit=cover}
+que respeta las zonas seguras (\textit{notch}) de los dispositivos modernos.
+
+\begin{AvisoNota}
+La PWA prioriza la \textbf{instalabilidad} y la integración nativa (icono, color de tema,
+modo \textit{standalone}, zonas seguras) sobre el funcionamiento sin conexión completo:
+el sistema es intrínsecamente conectado (consume la API REST y recibe eventos Realtime),
+por lo que el énfasis está en la experiencia tipo app más que en una caché \textit{offline}
+exhaustiva.
+\end{AvisoNota}

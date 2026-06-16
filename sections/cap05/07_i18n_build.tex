@@ -1,0 +1,136 @@
+% =============================================================================
+% 5.7 INTERNACIONALIZACIÓN, AUTENTICACIÓN OAUTH Y OPTIMIZACIÓN
+% =============================================================================
+\section{Internacionalización, Autenticación Federada y Optimización}
+\label{sec:i18n_build}
+
+Esta sección documenta tres aspectos transversales del frontend que completan el diseño
+detallado: la internacionalización multilingüe, el flujo de autenticación federada OAuth
+en el cliente, y las estrategias de optimización del rendimiento de carga.
+
+\subsection{Internacionalización con i18next (es / en / pt)}
+\label{subsec:i18n}
+
+La aplicación es \textbf{trilingüe} —español, inglés y portugués— mediante
+\textbf{i18next} y \textbf{react-i18next}. Las traducciones se organizan en \textbf{11
+espacios de nombres} (\textit{namespaces}) por idioma, lo que segmenta los textos por
+área funcional y evita un único fichero monolítico. La tabla~\ref{tab:i18n-ns} enumera los
+\textit{namespaces}.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Namespace} & \sffamily\textbf{Contenido} \\
+\hline
+\texttt{common} · \texttt{nav} & Textos transversales y de navegación. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{auth} · \texttt{settings} & Pantallas de acceso y de preferencias. \\ \hline
+\texttt{dashboard} · \texttt{recruiter} · \texttt{admin} & Espacios de trabajo por rol. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{public} · \texttt{pages} & Vistas públicas y páginas estáticas. \\ \hline
+\texttt{domain} · \texttt{components} & Terminología de dominio y componentes reutilizables. \\ \hline
+\end{tabularx}
+\label{tab:i18n-ns}
+
+El idioma se resuelve con \comando{i18next-browser-languagedetector}, que infiere la
+preferencia del navegador, y se sincroniza con el \comando{authStore} para persistir la
+elección del usuario entre sesiones (hidratación de idioma, sección~\ref{subsec:stores},
+pág.~\pageref{subsec:stores}). El backend respeta esta preferencia para localizar correos
+y mensajes vía \pathbreak{/api/v1/preferences}.
+
+Los componentes consumen las traducciones con el \textit{hook} \comando{useTranslation},
+referenciando el \textit{namespace} y la clave, como ilustra el
+listado~\ref{lst:i18n-uso}. La inicialización (listado~\ref{lst:i18n-init}) carga los 33
+módulos de traducción (11 \textit{namespaces} $\times$ 3 idiomas) y registra el detector.
+
+\begin{lstlisting}[language=JavaScript, caption={Inicialización de i18next con detector de idioma (\texttt{i18n/index.ts}).}, label={lst:i18n-init}]
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: { es, en, pt },     // 11 namespaces por idioma
+    fallbackLng: 'es',
+    interpolation: { escapeValue: false },
+  });
+\end{lstlisting}
+
+\begin{lstlisting}[language=JavaScript, caption={Consumo de traducciones en un componente.}, label={lst:i18n-uso}]
+const { t } = useTranslation('dashboard');
+return <h1>{t('portfolio.title')}</h1>;  // -> "Mi portafolio" / "My portfolio"
+\end{lstlisting}
+
+\subsection{Flujo de autenticación federada (OAuth2) en el cliente}
+\label{subsec:oauth}
+
+Además del acceso con credenciales, EthosHub admite \textbf{OAuth2} (proveedores sociales
+vía Supabase Auth). El cliente no maneja secretos de OAuth: delega el intercambio en
+Supabase y solo recibe el resultado en una ruta de \textit{callback}. La
+figura~\ref{fig:flow-oauth} ilustra el flujo.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.3cm,
+    box/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.6cm, minimum height=0.85cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Persona!25] (user) {Usuario};
+    \node[box, fill=c4Componente!40, right=of user] (login) {LoginPage\\\scriptsize ``Entrar con...''};
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black, right=of login] (sb) {Supabase\\Auth (OAuth)};
+    \node[box, fill=c4Componente!40, below=of sb] (cb) {OAuth2Callback\\Page};
+    \node[box, fill=c4Componente!45, below=of login] (sync) {authService\\\scriptsize POST /oauth/sync};
+    \node[box, fill=c4Sistema, text=white, left=of sync] (home) {Dashboard\\por rol};
+
+    \draw[rel] (user) -- (login);
+    \draw[rel] (login) -- node[c4etiqueta, above]{\scriptsize redirect} (sb);
+    \draw[rel] (sb) -- node[c4etiqueta, right]{\scriptsize token} (cb);
+    \draw[rel] (cb) -- (sync);
+    \draw[rel] (sync) -- node[c4etiqueta, above]{\scriptsize sesión} (home);
+\end{tikzpicture}
+\caption{Flujo de autenticación federada OAuth2 en el cliente.}
+\label{fig:flow-oauth}
+\end{figure}
+
+Tras el retorno, \comando{OAuth2CallbackPage} extrae el token de Supabase y llama a
+\comando{authService} para sincronizar el perfil en el backend
+(\pathbreak{POST /api/auth/oauth/sync}, capítulo~\ref{ch:backend}, tabla~\ref{tab:endpoints},
+pág.~\pageref{tab:endpoints}), creando el perfil local si es la primera vez. El servidor
+de desarrollo de Vite establece la cabecera \\
+\comando{Cross-Origin-Opener-Policy: same-origin-allow-popups} para permitir el flujo de
+ventana emergente de OAuth.
+
+\subsection{Optimización del rendimiento de carga}
+\label{subsec:optimizacion}
+
+El rendimiento percibido se optimiza con tres técnicas combinadas, descritas en la
+tabla~\ref{tab:optimizacion}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Técnica} & \sffamily\textbf{Efecto} \\
+\hline
+\textit{Code splitting} por ruta & Cada página se carga bajo demanda (\texttt{React.lazy} + \texttt{Suspense}). \\ \hline
+\rowcolor{grisTecnico}
+\textit{Manual chunks} (Vite) & Se aísla el \textit{vendor} (\texttt{react}, \texttt{react-dom}, \texttt{react-router-dom}) en un \textit{chunk} cacheable. \\ \hline
+\textit{Optimize deps} & Se pre-empaquetan \texttt{leaflet} y \texttt{react-leaflet} para acelerar el arranque en desarrollo. \\ \hline
+\rowcolor{grisTecnico}
+\textit{Skeletons} de carga & \texttt{Suspense} muestra esqueletos en vez de pantallas en blanco durante la carga diferida. \\ \hline
+\end{tabularx}
+\label{tab:optimizacion}
+
+\begin{NotaTecnica}
+La división del \textit{vendor} en su propio \textit{chunk} es una optimización de caché:
+las dependencias base (React y el enrutador) cambian con poca frecuencia, por lo que el
+navegador puede reutilizar ese \textit{chunk} entre despliegues mientras solo se
+re-descarga el código de aplicación modificado.
+\end{NotaTecnica}

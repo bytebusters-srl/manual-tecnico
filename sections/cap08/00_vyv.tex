@@ -1,0 +1,37 @@
+% =============================================================================
+% CAPÍTULO 8 — VERIFICACIÓN, VALIDACIÓN Y ENTORNOS DE TRABAJO
+% Archivo maestro del capítulo. Importa las secciones desde sections/cap08/.
+% =============================================================================
+\chapter{Verificación, Validación y Entornos de Trabajo}
+\label{ch:vyv}
+\resumenCapitulo{Este capítulo cubre cómo se comprueba y se ejecuta el software: la
+estrategia de pruebas (Testcontainers en el backend, Vitest en el frontend), la
+configuración de los entornos de desarrollo y producción, y la gestión de configuraciones
+y secretos conforme a la norma ISO/IEC/IEEE~15289:2024.}
+
+La norma ISO/IEC/IEEE~15289:2024 exige documentar no solo \textit{qué} hace el software,
+sino \textbf{cómo se comprueba que lo hace correctamente} y \textbf{en qué entornos se
+ejecuta}. Este capítulo cubre los tres ítems de información correspondientes: la estrategia
+de pruebas (verificación y validación), la configuración de los entornos de ejecución
+(desarrollo y producción) y la gestión de configuraciones y secretos.
+
+Estos aspectos se apoyan en el diseño descrito en capítulos anteriores: las pruebas
+verifican el comportamiento del backend (capítulo~\ref{ch:backend},
+pág.~\pageref{ch:backend}) y del frontend (capítulo~\ref{ch:frontend},
+pág.~\pageref{ch:frontend}); los entornos materializan el empaquetado monolítico
+(sección~\ref{subsec:empaquetado}, pág.~\pageref{subsec:empaquetado}); y la gestión de
+secretos extiende el modelo de seguridad de las integraciones externas
+(capítulo~\ref{ch:integraciones}, pág.~\pageref{ch:integraciones}).
+
+\begin{NotaTecnica}
+La distinción entre \textbf{verificación} (``¿construimos el producto correctamente?'',
+es decir, conforme a su especificación) y \textbf{validación} (``¿construimos el producto
+correcto?'', es decir, el que satisface la necesidad) guía la organización de este
+capítulo: las pruebas automatizadas verifican; los entornos y la gestión de configuración
+soportan la validación en condiciones realistas.
+\end{NotaTecnica}
+
+% --- Secciones del capítulo (orden del índice instrucciones.md §8) ---
+\input{sections/cap08/01_pruebas}     % 8.1 Estrategia de pruebas
+\input{sections/cap08/02_entornos}    % 8.2 Entornos de ejecución
+\input{sections/cap08/03_secretos}    % 8.3 Gestión de configuraciones y secretos

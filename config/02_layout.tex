@@ -17,12 +17,29 @@
 \onehalfspacing      % Interlineado 1.5 para legibilidad en lectura larga
 
 % 2. Jerarquía de Títulos (Especificaciones de Diseño)
-% Títulos de Sección (Capítulos): Helvetica, 16 pt, Negrita, Color Corporativo
-\titleformat{\chapter}[hang]
-  {\sffamily\bfseries\fontsize{16}{19.2}\selectfont\color{colorPrimario}}
-  {\thechapter.}
-  {1em}{}
-\titlespacing*{\chapter}{0pt}{-20pt}{20pt}
+% Portada de capítulo estilo "libro": el título del capítulo ocupa su propia
+% plana y el contenido comienza en la página siguiente. Se logra con un
+% \titleformat de tipo "display" que coloca un rótulo "CAPÍTULO N" y el título
+% en gran tamaño. NO se dibuja regla horizontal; en su lugar, cada capítulo
+% declara un breve resumen con \resumenCapitulo{...}, que cierra la plana.
+\titleformat{\chapter}[display]
+  {\sffamily\bfseries\color{colorPrimario}}
+  {\filright\fontsize{13}{15}\selectfont\color{grisISO}\MakeUppercase{Capítulo \thechapter}}
+  {0.35cm}
+  {\fontsize{25}{29}\selectfont\filright}
+  []
+\titlespacing*{\chapter}{0pt}{55pt}{24pt}
+
+% \resumenCapitulo{texto}: sinopsis breve bajo el título del capítulo, en la
+% misma plana. Cierra con \clearpage para que el contenido empiece en la página
+% siguiente (estilo libro). Sustituye a la antigua regla horizontal de color.
+\newcommand{\resumenCapitulo}[1]{%
+  \vspace{0.5cm}%
+  {\color{colorAcento}\rule{2.5cm}{2pt}}\par
+  \vspace{0.45cm}%
+  {\normalfont\sffamily\fontsize{11}{15}\selectfont\color{grisISO!95!black}%
+   \itshape #1\par}%
+  \clearpage}
 
 % Subtítulos: Helvetica, 14 pt, Negrita
 \titleformat{\section}[hang]
@@ -31,22 +48,29 @@
   {1em}{}
 
 % 3. Identidad Corporativa: Encabezado y Pie (Trazabilidad)
+
+% Variables de trazabilidad documental (ISO 15289). Se redefinen desde main.tex.
+\newcommand{\currentDocID}{MT-ARQ-000}
+\newcommand{\currentDocEstado}{Borrador}
+\newcommand{\setDocID}[1]{\renewcommand{\currentDocID}{#1}}
+\newcommand{\setDocEstado}[1]{\renewcommand{\currentDocEstado}{#1}}
+
 \pagestyle{fancy}
-\fancyhf{} 
+\fancyhf{}
 
 % Redefinimos las marcas para capturar solo el nombre limpio del capítulo/sección
 \renewcommand{\chaptermark}[1]{\markboth{#1}{}}
 \renewcommand{\sectionmark}[1]{\markright{#1}}
 
-% Encabezado: Logo (Izq) | Título Dinámico y Estado (Der)
+% Encabezado: Logo (Izq) | Capítulo + Estado (Der)
 \fancyhead[L]{\includegraphics[height=0.5cm, keepaspectratio]{assets/img/bytebusters/logo_horizontal.png}}
 
-% Aquí usamos \leftmark para inyectar automáticamente el nombre del capítulo actual
-\fancyhead[R]{\sffamily\footnotesize\textcolor{colorPrimario}{\textbf{\leftmark\ | Estado: Aprobado}}}
+% \leftmark inyecta automáticamente el nombre del capítulo actual
+\fancyhead[R]{\sffamily\footnotesize\textcolor{colorPrimario}{\textbf{\leftmark\ | Estado: \currentDocEstado}}}
 
-% Pie de Página: Versión e IP (Izq) | Paginación (Der)
-\fancyfoot[L]{\sffamily\footnotesize\textcolor{grisISO}{v2.1.3 | Confidencial - Byte Busters S.R.L.}}
-\fancyfoot[R]{\sffamily\footnotesize\textcolor{grisISO}{Página \thepage\ de \pageref{LastPage}}}
+% Pie de Página: ID Documental y Confidencialidad (Izq) | Paginación (Der)
+\fancyfoot[L]{\sffamily\footnotesize\textcolor{grisISO}{\currentDocID\ | Confidencial - Byte Busters S.R.L.}}
+\fancyfoot[R]{\sffamily\footnotesize\textcolor{grisISO}{Página \thepage\ de \pageref{ultima-pagina}}}
 
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.4pt}

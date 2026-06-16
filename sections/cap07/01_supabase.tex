@@ -1,0 +1,146 @@
+% =============================================================================
+% 7.1 INTEGRACIÓN CON SUPABASE
+% =============================================================================
+\section{Integración con Supabase}
+\label{sec:int_supabase}
+
+Supabase es el proveedor central de EthosHub: aporta la autenticación, la base de datos
+PostgreSQL (capítulo~\ref{ch:basedatos}, pág.~\pageref{ch:basedatos}), las funciones RPC y
+los canales de tiempo real. La integración es \textbf{dual}: el cliente consume Supabase
+\textit{directamente} con la \texttt{anon key} —protegido por las políticas RLS del motor
+(sección~\ref{sec:rls}, pág.~\pageref{sec:rls})—, mientras que el backend lo consume con la
+\texttt{service\_role key} para operaciones privilegiadas.
+
+\subsection{Cliente del navegador y autenticación}
+\label{subsec:supabase_cliente}
+
+El frontend instancia un \textbf{cliente de \texttt{supabase-js}} en \pathbreak{lib/supabase.ts}
+con una configuración deliberadamente \textbf{minimalista}: \comando{autoRefreshToken: false},
+\comando{persistSession: false} y \comando{detectSessionInUrl: false}. La sesión \textbf{no}
+la gestiona Supabase, sino el \comando{authStore} del propio frontend
+(capítulo~\ref{ch:frontend}, sección~\ref{subsec:persistencia},
+pág.~\pageref{subsec:persistencia}); Supabase se usa solo como \textbf{transporte} de RPC y
+tiempo real.
+
+\clearpage
+\begin{lstlisting}[language=JavaScript, caption={Cliente de Supabase con inyección manual del JWT (\texttt{lib/supabase.ts}).}, label={lst:supabase-client}]
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { autoRefreshToken: false, persistSession: false,
+          detectSessionInUrl: false },
+  global: {
+    fetch: (url, options = {}) => {            // inyecta el JWT en cada fetch
+      const token = sessionStorage.getItem(ACCESS_TOKEN_KEY);
+      const headers = new Headers(options.headers);
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      return fetch(url, { ...options, headers });
+    },
+  },
+});
+\end{lstlisting}
+
+\begin{NotaTecnica}
+La bandera \comando{isSupabaseConfigured} comprueba que \texttt{VITE\_SUPABASE\_URL} y
+\texttt{VITE\_SUPABASE\_ANON\_KEY} estén presentes antes de crear el cliente; si faltan, el
+cliente es \texttt{null} y las funciones de tiempo real degradan con elegancia en lugar de
+fallar. Tras autenticarse, \comando{setSupabaseAuth(token)} propaga el JWT al \textit{socket}
+de Realtime con \texttt{supabase.realtime.setAuth(...)}, de modo que las suscripciones
+respeten igualmente las políticas RLS.
+\end{NotaTecnica}
+
+\subsection{Consumo de funciones RPC desde el frontend}
+\label{subsec:supabase_rpc}
+
+Para operaciones de negocio que conviene resolver \textbf{atómicamente en el motor}, el
+cliente invoca \textbf{funciones RPC} (PL/pgSQL \texttt{SECURITY DEFINER}, documentadas en
+el capítulo~\ref{ch:basedatos}, sección~\ref{sec:programable},
+pág.~\pageref{sec:programable}) mediante \comando{supabase.rpc(nombre, parámetros)}. La
+tabla~\ref{tab:rpcs-fe} cataloga las RPC reales consumidas desde el cliente.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Función RPC} & \sffamily\textbf{Propósito} \\
+\hline
+\texttt{mark\_messages\_read} & Marca como leídos los mensajes de un chat. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{get\_candidate\_notes} & Recupera las notas privadas del reclutador sobre un candidato. \\ \hline
+\texttt{add\_candidate\_note} · \texttt{update\_candidate\_note} · \texttt{delete\_candidate\_note} & CRUD de notas privadas del reclutador. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{get\_company\_pipeline} & Devuelve el \textit{pipeline} Kanban de candidatos de la empresa. \\ \hline
+\texttt{update\_like\_stage} & Mueve a un candidato de fase en el \textit{pipeline}. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{remove\_like} & Elimina un \textit{like}/candidato del \textit{pipeline}. \\ \hline
+\texttt{upsert\_chat} & Crea o recupera el chat entre reclutador y candidato. \\ \hline
+\end{tabularx}
+\label{tab:rpcs-fe}
+
+\begin{lstlisting}[language=JavaScript, caption={Invocación de una RPC con parámetros tipados (real).}, label={lst:rpc-call}]
+const { data, error } = await supabase.rpc('get_company_pipeline',
+  { p_company_id: profile.id });
+\end{lstlisting}
+
+\begin{AvisoNota}
+El prefijo \texttt{p\_} en los parámetros (\texttt{p\_company\_id}, \texttt{p\_profile\_id})
+es la convención de nomenclatura de los argumentos de las funciones PL/pgSQL del esquema.
+Como estas RPC son \texttt{SECURITY DEFINER}, ejecutan con privilegios elevados pero validan
+internamente la pertenencia, combinando atomicidad con seguridad.
+\end{AvisoNota}
+
+\subsection{Canales de comunicación en tiempo real}
+\label{subsec:supabase_realtime}
+
+El tiempo real se implementa con el protocolo de \textbf{eventos compartidos} de Supabase,
+suscribiéndose a \comando{postgres\_changes}: cambios en tablas del esquema \texttt{core}
+que Supabase entrega por \textit{WebSocket} a los clientes suscritos, \textbf{sin
+\textit{polling}}. La figura~\ref{fig:rt-canales} ilustra los canales activos.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.5cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.7cm, minimum height=0.85cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Datos!22, draw=c4Datos!70!black] (db) {core.chat\_messages\\core.profile\_likes\\\scriptsize \dots};
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black, right=of db] (rt) {Realtime\\\scriptsize postgres\_changes};
+    \node[box, fill=c4Componente!40, right=of rt, yshift=0.9cm] (chat) {Canal chat\\\scriptsize presencia + mensajes};
+    \node[box, fill=c4Componente!40, right=of rt, yshift=-0.9cm] (dash) {Canal dashboard\\\scriptsize métricas en vivo};
+
+    \draw[rel] (db) -- node[c4etiqueta, above]{\scriptsize WAL} (rt);
+    \draw[rel] (rt) -- (chat);
+    \draw[rel] (rt) -- (dash);
+\end{tikzpicture}
+\caption{Canales de tiempo real de Supabase sobre cambios en el esquema \texttt{core}.}
+\label{fig:rt-canales}
+\end{figure}
+
+La tabla~\ref{tab:canales-rt} enumera los canales reales y la tabla que observan.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Canal} & \sffamily\textbf{Tabla observada y efecto} \\
+\hline
+\texttt{presence:\{chatId\}} & Presencia de los participantes de un chat. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{global-chat-rec:\{id\}} & \texttt{chat\_messages}: nuevos mensajes para el reclutador. \\ \hline
+\texttt{recruiter-dashboard-live:\{id\}} & \texttt{recruiter\_talent\_views} y \texttt{profile\_likes}: refresca métricas. \\ \hline
+\end{tabularx}
+\label{tab:canales-rt}
+
+\begin{NotaTecnica}
+La suscripción a \comando{postgres\_changes} puede dejar de entregar eventos de forma
+silenciosa tras una caída de red; por ello las suscripciones inspeccionan el estado del
+canal (\texttt{subscribe((status) => ...)}) para detectar la desconexión y re-suscribirse.
+Esta resiliencia es la contraparte cliente del modelo de entrega \textit{push} validado por
+el backend (capítulo~\ref{ch:backend}, sección~\ref{sec:realtime},
+pág.~\pageref{sec:realtime}).
+\end{NotaTecnica}

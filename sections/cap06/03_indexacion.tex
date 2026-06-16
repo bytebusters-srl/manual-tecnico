@@ -1,0 +1,91 @@
+% =============================================================================
+% 6.4 ESTRATEGIA DE INDEXACIÓN Y OPTIMIZACIÓN
+% =============================================================================
+\section{Estrategia de Indexación y Optimización de Consultas}
+\label{sec:indexacion}
+
+El esquema define alrededor de \textbf{80 índices} (incluyendo los implícitos de PK y
+UNIQUE). La estrategia no es indexar indiscriminadamente, sino atacar los patrones de
+consulta reales del backend: filtrado por dueño (\texttt{profile\_id}), exclusión de
+borrados lógicos y ordenación por relevancia o fecha.
+
+% -----------------------------------------------------------------------------
+\subsection{Índices B-Tree sobre identificadores y llaves foráneas}
+\label{subsec:btree}
+
+Todas las llaves foráneas de uso frecuente cuentan con un índice B-Tree explícito que
+acelera los \textit{joins} y los filtros por dueño. La tabla~\ref{tab:tipos-indice}
+clasifica los índices del esquema por tipo y propósito.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|c|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Tipo de índice} & \textbf{Aprox.} & \textbf{Propósito y ejemplo} \\
+\hline
+B-Tree simple (FK) & $\sim$20 & Acelera \textit{joins} y filtros por dueño. Ej.: \texttt{idx\_projects\_profile\_id}. \\
+\hline
+\rowcolor{grisTecnico}
+Compuesto & $\sim$12 & Cubre filtro + orden en una pasada. Ej.: \texttt{idx\_notifications\_profile (profile\_id, is\_read, created\_at DESC)}. \\
+\hline
+Parcial (\textit{soft-delete}) & $\sim$10 & Indexa solo filas activas (\texttt{WHERE deleted\_at IS NULL}), reduciendo tamaño. \\
+\hline
+\rowcolor{grisTecnico}
+Único parcial & $\sim$6 & Unicidad condicional. Ej.: \texttt{uq\_profile\_tag} único por \texttt{(profile\_id, tag\_id)} solo si activo. \\
+\hline
+Funcional & 1 & \texttt{idx\_login\_attempts\_email} sobre \texttt{lower(email)} para búsqueda case-insensitive. \\
+\hline
+\end{tabularx}
+\label{tab:tipos-indice}
+
+\subsection{Índices compuestos y parciales para búsquedas optimizadas}
+\label{subsec:compuestos}
+
+Los \textbf{índices parciales} son la pieza central de la estrategia de
+\textit{soft-delete}: como la mayoría de las consultas filtran por
+\texttt{deleted\_at IS NULL}, indexar solo las filas activas reduce el tamaño del índice
+y mejora la selectividad. La tabla~\ref{tab:indices-clave} muestra ejemplos
+representativos extraídos del esquema real.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.25}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\color{colorPrimario}\scriptsize}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Índice} & \sffamily\textbf{Definición y motivación} \\
+\hline
+idx\_projects\_profile\_active & \texttt{(profile\_id, is\_featured DESC, created\_at DESC) WHERE deleted\_at IS NULL}. Lista los proyectos activos de un perfil, destacados primero. \\
+\hline
+\rowcolor{grisTecnico}
+idx\_work\_experiences\_active & \texttt{(profile\_id, is\_current DESC, start\_date DESC) WHERE deleted\_at IS NULL}. Línea de tiempo laboral. \\
+\hline
+idx\_notifications\_profile & \texttt{(profile\_id, is\_read, created\_at DESC)}. Bandeja de notificaciones del usuario. \\
+\hline
+\rowcolor{grisTecnico}
+idx\_profile\_likes\_company\_stage & \texttt{(company\_profile\_id, stage, stage\_order)}. Render del pipeline Kanban por fase. \\
+\hline
+uq\_chat\_messages\_client\_id & \texttt{(chat\_id, client\_message\_id) WHERE client\_message\_id IS NOT NULL}. Garantiza idempotencia de mensajes. \\
+\hline
+\rowcolor{grisTecnico}
+idx\_portfolio\_settings\_slug & \texttt{(slug) WHERE slug IS NOT NULL AND slug <> ''}. Resolución de portafolios públicos por slug. \\
+\hline
+idx\_psc\_active\_lookup & \texttt{(profile\_id, purpose, code) WHERE used = false}. Validación rápida de OTP vigentes. \\
+\hline
+\rowcolor{grisTecnico}
+idx\_tss\_niche\_week & \texttt{(niche, week\_start, rank\_position)}. Cálculo del leaderboard por nicho. \\
+\hline
+\end{tabularx}
+\label{tab:indices-clave}
+
+\begin{NotaTecnica}
+El índice \comando{uq\_chat\_messages\_client\_id} merece especial atención: al ser un
+\textbf{índice único parcial} sobre \texttt{client\_message\_id}, implementa la
+idempotencia de mensajes a nivel de motor. Si el cliente reintenta un envío con el mismo
+\texttt{client\_message\_id}, el \texttt{INSERT} viola la unicidad y se evita el
+duplicado, sin necesidad de lógica adicional en la aplicación.
+\end{NotaTecnica}

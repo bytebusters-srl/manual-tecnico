@@ -1,0 +1,423 @@
+% =============================================================================
+% 6.2 DICCIONARIO DE DATOS EXHAUSTIVO
+% =============================================================================
+\section{Diccionario de Datos Exhaustivo}
+\label{sec:diccionario}
+
+Esta sección documenta \textbf{columna por columna} las 25 tablas del esquema
+\texttt{core}, agrupadas por dominio funcional. Para cada columna se indica su nombre
+técnico, el tipo de dato nativo de PostgreSQL, su nulidad, el valor por defecto y una
+descripción técnica de su uso. Las convenciones transversales del esquema son:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Claves primarias UUID:} la mayoría de las tablas usan UUID generados
+    con \comando{gen\_random\_uuid()}, evitando claves secuenciales predecibles.
+    \item \textbf{Marcas temporales:} \comando{created\_at} y \comando{updated\_at}
+    (tipo \texttt{timestamptz}, defecto \texttt{now()}) en casi todas las tablas.
+    \item \textbf{Borrado lógico:} la columna \comando{deleted\_at} (\textit{nullable})
+    implementa \textit{soft-delete}; un valor no nulo marca el registro como eliminado
+    sin borrarlo físicamente.
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\subsection{Esquema de Identidad y Cuentas}
+\label{subsec:dic_identidad}
+
+El núcleo de identidad lo forman las dos tablas de perfil y sus dependencias de
+seguridad, todas ancladas a \texttt{auth.users(id)} de Supabase.
+
+\paragraph{Tabla \texttt{profiles\_basic} (perfil profesional).}
+\begin{DiccTabla}{profiles\_basic}
+id\_auth & uuid & NO & — & PK. FK a \texttt{auth.users(id)}; identidad del usuario. \\ \hline
+email & text & NO & — & Correo electrónico (único entre activos). \\ \hline
+first\_name & text & NO & \texttt{''} & Nombre. \\ \hline
+last\_name & text & NO & \texttt{''} & Apellido. \\ \hline
+phone\_code & varchar(10) & SÍ & — & Prefijo telefónico (p.~ej. \texttt{+591}). \\ \hline
+phone\_number & varchar(30) & SÍ & — & Número telefónico sin prefijo. \\ \hline
+country\_code & varchar(10) & SÍ & — & Código de país. \\ \hline
+bio & text & SÍ & — & Biografía / narrativa profesional. \\ \hline
+location & text & SÍ & — & Ubicación textual. \\ \hline
+website & text & SÍ & — & Sitio web personal. \\ \hline
+avatar\_url & text & SÍ & — & URL de la foto de perfil. \\ \hline
+provider & text & NO & \texttt{'email'} & Proveedor de alta (email / OAuth). \\ \hline
+is\_active & boolean & NO & \texttt{true} & Cuenta activa. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Marca de borrado lógico. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Fecha de creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Fecha de última modificación. \\ \hline
+seniority & varchar(50) & SÍ & — & Nivel de seniority. \\ \hline
+availability\_status & varchar(50) & SÍ & — & Estado: Disponible / Ocupado / Incógnito (CHECK). \\ \hline
+last\_password\_changed\_at & timestamptz & SÍ & — & Auditoría de cambio de contraseña. \\ \hline
+last\_email\_changed\_at & timestamptz & SÍ & — & Auditoría de cambio de correo. \\ \hline
+latitude & double precision & SÍ & — & Latitud geográfica. \\ \hline
+longitude & double precision & SÍ & — & Longitud geográfica. \\ \hline
+oauth\_providers\_linked & text[] & NO & \texttt{'\{\}'} & Proveedores OAuth vinculados. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{profiles\_company} (perfil reclutador).}
+\begin{DiccTabla}{profiles\_company}
+id\_auth & uuid & NO & — & PK. FK a \texttt{auth.users(id)}. \\ \hline
+email & text & NO & — & Correo del reclutador. \\ \hline
+first\_name & text & NO & \texttt{''} & Nombre del contacto. \\ \hline
+last\_name & text & NO & \texttt{''} & Apellido del contacto. \\ \hline
+phone\_code & varchar(10) & SÍ & — & Prefijo telefónico. \\ \hline
+phone\_number & varchar(30) & SÍ & — & Número telefónico. \\ \hline
+country\_code & varchar(10) & SÍ & — & Código de país. \\ \hline
+company\_name & text & SÍ & — & Razón social de la empresa. \\ \hline
+company\_website & text & SÍ & — & Sitio web corporativo. \\ \hline
+company\_size & text & SÍ & — & Tamaño de la empresa. \\ \hline
+company\_description & text & SÍ & — & Descripción de la empresa. \\ \hline
+industry & text & SÍ & — & Industria / sector. \\ \hline
+avatar\_url & text & SÍ & — & Logo / avatar. \\ \hline
+provider & text & NO & \texttt{'email'} & Proveedor de alta. \\ \hline
+is\_active & boolean & NO & \texttt{true} & Cuenta activa. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+oauth\_providers\_linked & text[] & NO & \texttt{'\{\}'} & Proveedores OAuth vinculados. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{profile\_preferences} (preferencias del usuario).}
+\begin{DiccTabla}{profile\_preferences}
+profile\_id & uuid & NO & — & PK. FK a \texttt{auth.users(id)}. \\ \hline
+language & varchar(5) & NO & \texttt{'es'} & Idioma de la interfaz (es/en/pt). \\ \hline
+theme & varchar(10) & NO & \texttt{'dark'} & Tema visual. \\ \hline
+show\_github\_heatmap & boolean & NO & \texttt{true} & Mostrar mapa de calor de GitHub. \\ \hline
+show\_linkedin\_recommendations & boolean & NO & \texttt{false} & Mostrar recomendaciones de LinkedIn. \\ \hline
+section\_order & text[] & NO & (bio, skills, …) & Orden de secciones del portafolio. \\ \hline
+notifications & jsonb & NO & \texttt{'\{\}'} & Preferencias de notificación. \\ \hline
+privacy & jsonb & NO & \texttt{'\{\}'} & Preferencias de privacidad. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\
+\end{DiccTabla}
+
+% -----------------------------------------------------------------------------
+\subsection{Esquema de Contenido Profesional}
+\label{subsec:dic_contenido}
+
+\paragraph{Tabla \texttt{projects} (proyectos).}
+\begin{DiccTabla}{projects}
+project\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+title & varchar(100) & NO & — & Título (no vacío, CHECK). \\ \hline
+description & varchar(500) & NO & — & Descripción (no vacía, CHECK). \\ \hline
+category & varchar(20) & NO & \texttt{'Other'} & Web/Mobile/API/Data /DevOps/Other (CHECK). \\ \hline
+status & varchar(20) & NO & \texttt{'draft'} & draft/in\_progress /completed/archived (CHECK). \\ \hline
+visibility & varchar(10) & NO & \texttt{'Private'} & Public/Private (CHECK). \\ \hline
+is\_featured & boolean & NO & \texttt{false} & Proyecto destacado. \\ \hline
+thumbnail & text & SÍ & — & Miniatura. \\ \hline
+repository\_url & text & SÍ & — & URL del repositorio. \\ \hline
+role & varchar(100) & NO & \texttt{''} & Rol desempeñado. \\ \hline
+technologies & text[] & NO & \texttt{'\{\}'} & Tecnologías empleadas. \\ \hline
+start\_date & date & SÍ & — & Fecha de inicio. \\ \hline
+end\_date & date & SÍ & — & Fecha de fin (>= inicio, CHECK). \\ \hline
+results & text & SÍ & — & Resultados / logros. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{project\_media} (multimedia de proyectos).}
+\begin{DiccTabla}{project\_media}
+media\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+project\_id & uuid & NO & — & FK a \texttt{projects} (CASCADE). \\ \hline
+url & text & NO & — & URL del recurso (no vacía, CHECK). \\ \hline
+type & varchar(20) & NO & — & youtube/vimeo/ figma/slides/pdf/document/image (CHECK). \\ \hline
+title & varchar(200) & NO & \texttt{''} & Título del recurso. \\ \hline
+size & bigint & SÍ & — & Tamaño en bytes (> 0, CHECK). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{work\_experiences} (experiencia laboral).}
+\begin{DiccTabla}{work\_experiences}
+work\_experience\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+company\_name & text & NO & — & Empresa (no vacía, CHECK). \\ \hline
+job\_title & text & NO & — & Cargo (no vacío, CHECK). \\ \hline
+location & text & SÍ & — & Ubicación. \\ \hline
+description & text & SÍ & — & Descripción (<= 1000 car., CHECK). \\ \hline
+is\_current & boolean & NO & \texttt{false} & Trabajo actual. \\ \hline
+is\_freelance & boolean & NO & \texttt{false} & Trabajo independiente. \\ \hline
+logo\_url & text & SÍ & — & Logo de la empresa. \\ \hline
+company\_image\_url & text & SÍ & — & Imagen de la empresa. \\ \hline
+company\_url & text & SÍ & — & Sitio web de la empresa. \\ \hline
+start\_date & date & SÍ & — & Inicio. \\ \hline
+end\_date & date & SÍ & — & Fin (>= inicio, CHECK). \\ \hline
+technologies & text[] & NO & \texttt{'\{\}'} & Tecnologías. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\ \hline
+latitude & double precision & SÍ & — & Latitud (geolocalización). \\ \hline
+longitude & double precision & SÍ & — & Longitud (geolocalización). \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{academic\_records} (formación académica).}
+\begin{DiccTabla}{academic\_records}
+academic\_record\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+institution & text & NO & — & Institución (no vacía, CHECK). \\ \hline
+degree & text & NO & — & Título obtenido (no vacío, CHECK). \\ \hline
+field\_of\_study & text & SÍ & — & Campo de estudio. \\ \hline
+education\_type & text & NO & \texttt{'university'} & Enum (CHECK): \pathbreak{university/master/phd/certification/course/bootcamp/high_school}. \\ \hline
+start\_date & date & NO & — & Inicio. \\ \hline
+end\_date & date & SÍ & — & Fin (>= inicio, CHECK). \\ \hline
+gpa & numeric(5,2) & SÍ & — & Promedio (0–100, CHECK). \\ \hline
+credential\_url & text & SÍ & — & URL de la credencial. \\ \hline
+verification\_url & text & SÍ & — & URL de verificación. \\ \hline
+institution\_logo\_url & text & SÍ & — & Logo de la institución. \\ \hline
+is\_visible & boolean & NO & \texttt{true} & Visibilidad pública. \\ \hline
+description & text & SÍ & — & Descripción. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{global\_skill\_tags} (catálogo global de habilidades).}
+\begin{DiccTabla}{global\_skill\_tags}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+name & varchar(100) & NO & — & Nombre de la habilidad (único, CHECK). \\ \hline
+category & varchar(50) & NO & — & Frontend/Backend/Data/ Infrastructure/Mobile/Design/Soft Skill (CHECK). \\ \hline
+is\_normalized & boolean & NO & \texttt{false} & Tag normalizado por moderación. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{hard\_skills} (habilidades duras del perfil).}
+\begin{DiccTabla}{hard\_skills}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+tag\_id & uuid & NO & — & FK a \texttt{global\_skill\_tags} (CASCADE). \\ \hline
+level & varchar(20) & NO & — & Junior/Mid/Senior (CHECK). \\ \hline
+is\_top & boolean & NO & \texttt{false} & Habilidad destacada. \\ \hline
+top\_order & integer & SÍ & — & Orden 1–3 (solo si is\_top, CHECK). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{soft\_skills} (habilidades blandas).}
+\begin{DiccTabla}{soft\_skills}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+title & varchar(200) & NO & — & Título (no vacío, CHECK). \\ \hline
+description & varchar(250) & SÍ & — & Descripción. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{portfolio\_settings} (configuración del portafolio).}
+\begin{DiccTabla}{portfolio\_settings}
+portfolio\_settings\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK; único por perfil. \\ \hline
+is\_published & boolean & NO & \texttt{false} & Portafolio publicado. \\ \hline
+slug & text & SÍ & — & Slug público único (índice parcial). \\ \hline
+custom\_headline & text & SÍ & — & Titular personalizado. \\ \hline
+custom\_bio & text & SÍ & — & Biografía personalizada. \\ \hline
+accent\_color & text & NO & \texttt{'\#8b5cf6'} & Color de acento. \\ \hline
+show\_email & boolean & NO & \texttt{false} & Mostrar correo. \\ \hline
+show\_location & boolean & NO & \texttt{true} & Mostrar ubicación. \\ \hline
+show\_website & boolean & NO & \texttt{true} & Mostrar sitio web. \\ \hline
+views\_count & integer & NO & \texttt{0} & Contador de visitas. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\ \hline
+seo\_title & varchar(60) & SÍ & — & Título SEO. \\ \hline
+seo\_description & varchar(160) & SÍ & — & Descripción SEO. \\ \hline
+show\_connections & boolean & NO & \texttt{true} & Mostrar conexiones. \\ \hline
+show\_github\_heatmap & boolean & NO & \texttt{false} & Mostrar heatmap GitHub. \\ \hline
+selected\_cv\_document\_id & uuid & SÍ & — & FK a \texttt{cv\_documents} (SET NULL). \\ \hline
+cv\_pdf\_url & text & SÍ & — & URL del CV en PDF. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{portfolio\_items} (ítems del portafolio).}
+\begin{DiccTabla}{portfolio\_items}
+portfolio\_item\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+portfolio\_settings\_id & uuid & NO & — & FK a \texttt{portfolio\_settings} (CASCADE). \\ \hline
+item\_type & text & NO & — & project/experience/ education/hard\_skill/soft\_skill (CHECK). \\ \hline
+item\_id & uuid & NO & — & ID polimórfico del ítem referenciado. \\ \hline
+display\_order & integer & NO & \texttt{0} & Orden de presentación. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{cv\_documents} (documentos de CV).}
+\begin{DiccTabla}{cv\_documents}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+title & text & NO & — & Título (1–200 car., CHECK). \\ \hline
+mode & text & NO & \texttt{'markdown'} & markdown/latex (CHECK). \\ \hline
+content & text & NO & \texttt{''} & Contenido del CV. \\ \hline
+template\_id & text & SÍ & — & Plantilla aplicada. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación (trigger). \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{profile\_connections} (conexiones externas).}
+\begin{DiccTabla}{profile\_connections}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{auth.users(id)} (CASCADE). \\ \hline
+provider & text & NO & — & +20 proveedores o \texttt{custom} (CHECK). \\ \hline
+status & text & NO & \texttt{'connected'} & connected/disconnected /pending (CHECK). \\ \hline
+profile\_handle & text & SÍ & — & Handle del usuario en el proveedor. \\ \hline
+provider\_url & text & SÍ & — & URL del perfil externo (enfoque URL-first). \\ \hline
+access\_token & text & SÍ & — & Token de acceso (si aplica OAuth). \\ \hline
+token\_expires\_at & timestamptz & SÍ & — & Expiración del token. \\ \hline
+scopes & text & SÍ & — & Permisos concedidos. \\ \hline
+last\_synced\_at & timestamptz & SÍ & — & Última sincronización. \\ \hline
+api\_health & text & NO & \texttt{'healthy'} & healthy/degraded/down (CHECK). \\ \hline
+provider\_metadata & jsonb & SÍ & \texttt{'\{\}'} & Metadatos del proveedor. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación (trigger). \\ \hline
+provider\_kind & text & NO & \texttt{'manual'} & auth/manual/custom (CHECK). \\ \hline
+display\_label & text & SÍ & — & Etiqueta a mostrar. \\
+\end{DiccTabla}
+
+% -----------------------------------------------------------------------------
+\subsection{Esquema de Interacciones}
+\label{subsec:dic_interacciones}
+
+\paragraph{Tabla \texttt{chats} (conversaciones).}
+\begin{DiccTabla}{chats}
+chat\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+company\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_company} (CASCADE). \\ \hline
+basic\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Última actividad (trigger). \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico global. \\ \hline
+deleted\_at\_basic & timestamptz & SÍ & — & Ocultado por el profesional. \\ \hline
+deleted\_at\_company & timestamptz & SÍ & — & Ocultado por el reclutador. \\ \hline
+hidden\_basic & boolean & NO & \texttt{false} & Oculto para el profesional. \\ \hline
+hidden\_company & boolean & NO & \texttt{false} & Oculto para el reclutador. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{chat\_messages} (mensajes).}
+\begin{DiccTabla}{chat\_messages}
+message\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+chat\_id & uuid & NO & — & FK a \texttt{chats} (CASCADE). \\ \hline
+sender\_id & uuid & NO & — & FK a \texttt{auth.users(id)} (CASCADE). \\ \hline
+content & text & NO & \texttt{''} & Contenido del mensaje. \\ \hline
+attachment\_type & varchar & SÍ & — & image/audio/file/video (CHECK). \\ \hline
+attachment\_url & text & SÍ & — & URL del adjunto. \\ \hline
+is\_read & boolean & NO & \texttt{false} & Mensaje leído. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Envío. \\ \hline
+deleted\_at & timestamptz & SÍ & — & Borrado lógico. \\ \hline
+client\_message\_id & uuid & SÍ & — & ID de cliente para idempotencia (único parcial). \\
+\end{DiccTabla}
+
+\clearpage
+\paragraph{Tabla \texttt{chat\_typing} (indicador de escritura).}
+\begin{DiccTabla}{chat\_typing}
+chat\_id & uuid & NO & — & PK compuesta. FK a \texttt{chats} (CASCADE). \\ \hline
+user\_id & uuid & NO & — & PK compuesta. Usuario que escribe. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Última señal de escritura. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{notifications} (notificaciones).}
+\begin{DiccTabla}{notifications}
+notification\_id & bigint & NO & (secuencia) & PK. \\ \hline
+profile\_id & uuid & NO & — & Destinatario. \\ \hline
+type & text & NO & \texttt{'system'} & endorsement/ visit/ recommendation/system /message (CHECK). \\ \hline
+title & text & NO & — & Título de la notificación. \\ \hline
+message & text & NO & \texttt{''} & Cuerpo. \\ \hline
+is\_read & boolean & NO & \texttt{false} & Leída. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{profile\_likes} (pipeline de candidatos).}
+\begin{DiccTabla}{profile\_likes}
+like\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+company\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_company} (CASCADE). \\ \hline
+basic\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+stage & varchar(20) & NO & \texttt{'saved'} & saved/review/interview/ offer/hired (CHECK). \\ \hline
+stage\_order & integer & NO & \texttt{0} & Orden dentro de la fase Kanban. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{recruiter\_candidate\_notes} (notas privadas).}
+\begin{DiccTabla}{recruiter\_candidate\_notes}
+note\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+company\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_company} (CASCADE). \\ \hline
+basic\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+body & text & NO & — & Contenido (1–4000 car., CHECK). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+updated\_at & timestamptz & NO & \texttt{now()} & Modificación. \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{recruiter\_talent\_views} (vistas de talento).}
+\begin{DiccTabla}{recruiter\_talent\_views}
+view\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+company\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_company} (CASCADE). \\ \hline
+basic\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+viewed\_at & timestamptz & NO & \texttt{now()} & Momento de la visita. \\
+\end{DiccTabla}
+
+\clearpage
+\paragraph{Tabla \texttt{talent\_score\_snapshots} (leaderboard).}
+\begin{DiccTabla}{talent\_score\_snapshots}
+snapshot\_id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+basic\_profile\_id & uuid & NO & — & FK a \texttt{profiles\_basic} (CASCADE). \\ \hline
+niche & varchar(20) & NO & — & Nicho de talento. \\ \hline
+score & numeric(6,2) & NO & \texttt{0} & Puntaje calculado. \\ \hline
+rank\_position & integer & SÍ & — & Posición en el ranking. \\ \hline
+week\_start & date & NO & — & Semana del snapshot (único por nicho). \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+% -----------------------------------------------------------------------------
+\subsection{Esquema de Seguridad y Soporte}
+\label{subsec:dic_seguridad}
+
+\paragraph{Tabla \texttt{login\_attempts} (anti fuerza bruta).}
+\begin{DiccTabla}{login\_attempts}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+email & text & NO & — & Correo (único por \texttt{lower(email)}). \\ \hline
+failed\_count & integer & NO & \texttt{0} & Intentos fallidos consecutivos. \\ \hline
+blocked\_until & timestamptz & SÍ & — & Bloqueo temporal (5 fallos → 15 min). \\ \hline
+last\_attempt & timestamptz & NO & \texttt{now()} & Último intento. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\clearpage
+\paragraph{Tabla \texttt{profile\_security\_codes} (OTP de operaciones sensibles).}
+\begin{DiccTabla}{profile\_security\_codes}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+profile\_id & uuid & NO & — & FK a \texttt{auth.users(id)} (CASCADE). \\ \hline
+code & char(6) & NO & — & Código OTP de 6 dígitos. \\ \hline
+purpose & varchar(30) & NO & — & change\_password /change\_ email /delete\_ account /reset\_password (CHECK). \\ \hline
+used & boolean & NO & \texttt{false} & Código consumido. \\ \hline
+expires\_at & timestamptz & NO & \texttt{now()+15min} & Expiración. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\ \hline
+attempt\_count & integer & NO & \texttt{0} & Intentos fallidos (5 → invalidado). \\
+\end{DiccTabla}
+
+\paragraph{Tabla \texttt{verification\_codes} (verificación de cambios).}
+\begin{DiccTabla}{verification\_codes}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+auth\_id & uuid & NO & — & FK a \texttt{auth.users(id)} (CASCADE). \\ \hline
+code & varchar(6) & NO & — & Código de 6 dígitos (regex \texttt{\^{}\textbackslash d\{6\}\$}, CHECK). \\ \hline
+purpose & varchar(30) & NO & — & change\_password /change\_email /delete\_account (CHECK). \\ \hline
+new\_value & text & SÍ & — & Valor nuevo solicitado. \\ \hline
+expires\_at & timestamptz & NO & — & Expiración (> created\_at, CHECK). \\ \hline
+used\_at & timestamptz & SÍ & — & Momento de uso. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\clearpage
+\paragraph{Tabla \texttt{email\_change\_requests} (cambio de correo).}
+\begin{DiccTabla}{email\_change\_requests}
+id & uuid & NO & \texttt{gen\_random\_uuid()} & PK. \\ \hline
+auth\_id & uuid & NO & — & Usuario solicitante. \\ \hline
+new\_email & text & NO & — & Nuevo correo solicitado. \\ \hline
+token\_hash & text & NO & — & Hash del token (único). \\ \hline
+consumed & boolean & NO & \texttt{false} & Solicitud consumida. \\ \hline
+expires\_at & timestamptz & NO & — & Expiración. \\ \hline
+created\_at & timestamptz & NO & \texttt{now()} & Creación. \\
+\end{DiccTabla}
+
+\begin{AvisoNota}
+Las tablas de seguridad (\texttt{login\_attempts}, \texttt{profile\_security\_codes},
+\texttt{verification\_codes}, \texttt{email\_change\_requests}) tienen RLS habilitado
+pero \textbf{sin políticas para usuarios finales}: solo son accesibles mediante
+funciones \texttt{SECURITY DEFINER} y el rol \texttt{service\_role}, blindando los
+códigos OTP y los \textit{tokens} frente al acceso directo desde el cliente.
+\end{AvisoNota}

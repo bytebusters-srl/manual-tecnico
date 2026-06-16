@@ -1,0 +1,249 @@
+% =============================================================================
+% 4.3 DIAGRAMAS DE SECUENCIA DE OPERACIONES CLAVE
+% =============================================================================
+\section{Diagramas de Secuencia de Operaciones Clave}
+\label{sec:secuencias}
+
+Esta sección documenta el \textbf{comportamiento dinámico} del backend mediante diagramas
+de secuencia de las tres operaciones de mayor valor y complejidad: la autenticación
+federada con Supabase, el ciclo de asistencia IA y compilación de currículums, y la
+generación de \textit{insights} de reclutamiento.
+
+\subsection{Autenticación federada y validación de JWT}
+\label{subsec:seq_auth}
+
+El backend \textbf{nunca emite tokens}: delega la identidad en Supabase Auth y se limita
+a \textbf{verificar} cada JWT contra el JWKS (\textit{JSON Web Key Set}) del proveedor.
+La figura~\ref{fig:seq-auth} detalla la secuencia para una petición protegida.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    lifeline/.style={font=\sffamily\scriptsize\bfseries, align=center},
+    msg/.style={-{Stealth[length=2mm]}, semithick},
+    ret/.style={-{Stealth[length=2mm]}, semithick, dashed},
+    note/.style={font=\sffamily\scriptsize\itshape, text=grisISO}
+]
+    \def\xspa{0} \def\xfil{3.2} \def\xjwks{6.4} \def\xctrl{9.0}
+    \node[lifeline] (spa) at (\xspa,0) {SPA\\(Axios)};
+    \node[lifeline] (fil) at (\xfil,0) {Spring Security\\(Resource Server)};
+    \node[lifeline] (jwks) at (\xjwks,0) {Supabase\\JWKS};
+    \node[lifeline] (ctrl) at (\xctrl,0) {Controller\\+ Service};
+    \foreach \x in {\xspa,\xfil,\xjwks,\xctrl} \draw[grisISO!50, thick] (\x,-0.4) -- (\x,-6.2);
+
+    \draw[msg] (\xspa,-0.9) -- node[note, above]{\scriptsize GET /api/... + Bearer JWT} (\xfil,-0.9);
+    \draw[msg] (\xfil,-1.7) -- node[note, above]{\scriptsize obtener claves (1ª vez)} (\xjwks,-1.7);
+    \draw[ret] (\xjwks,-2.3) -- node[note, above]{\scriptsize claves públicas (cacheadas)} (\xfil,-2.3);
+    \node[note, align=left] at (\xfil+0.1,-3.0) {\scriptsize verifica firma (RS256/HS256),\\\scriptsize exp y claims};
+    \node[note, align=left] at (\xfil+0.1,-3.8) {\scriptsize AdminEmailPolicy.resolveRole()};
+    \draw[msg] (\xfil,-4.4) -- node[note, above]{\scriptsize Authentication + authority} (\xctrl,-4.4);
+    \draw[ret] (\xctrl,-5.1) -- node[note, above]{\scriptsize ApiResponse<T> (JSON)} (\xspa,-5.1);
+    \node[note, align=left] at (\xfil+0.2,-5.8) {\scriptsize si falla: 401 (entryPoint) o 403 (accessDenied)};
+\end{tikzpicture}
+\caption{Secuencia de validación de un JWT de Supabase en una petición protegida.}
+\label{fig:seq-auth}
+\end{figure}
+
+El paso de \textbf{resolución de rol} es crítico: \comando{AdminEmailPolicy.resolveRole()}
+deriva la autoridad \\ (\texttt{ROLE\_PROFESSIONAL}, \texttt{ROLE\_RECRUITER} o
+\texttt{ROLE\_ADMIN}) a partir de los \textit{claims} del token y degrada cualquier
+intento de \texttt{role=admin} que no provenga de un correo administrativo autorizado.
+Las claves se pre-descargan al arranque (\comando{warmupJwks()}) para que la primera
+petición no pague la latencia de la primera resolución JWKS.
+
+\clearpage
+\subsection{Recuperación de contraseña mediante OTP por correo}
+\label{subsec:seq_otp}
+
+El reinicio de contraseña no expone enlaces con tokens en la URL: usa un \textbf{código de
+un solo uso} (OTP) enviado por correo, gestionado por \comando{ForgotPasswordController} y
+\comando{ForgotPasswordService} en tres pasos (\texttt{/request}, \texttt{/verify},
+\texttt{/reset}). La figura~\ref{fig:seq-otp} detalla el flujo, que persiste el código en
+\texttt{core.verification\_codes} (tabla blindada por RLS a \texttt{service\_role}).
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    lifeline/.style={font=\sffamily\scriptsize\bfseries, align=center},
+    msg/.style={-{Stealth[length=2mm]}, semithick},
+    ret/.style={-{Stealth[length=2mm]}, semithick, dashed},
+    note/.style={font=\sffamily\scriptsize\itshape, text=grisISO}
+]
+    \def\xui{0} \def\xc{3.4} \def\xs{6.6} \def\xm{9.4}
+    \node[lifeline] (ui) at (\xui,0) {SPA};
+    \node[lifeline] (c) at (\xc,0) {ForgotPassword\\Controller};
+    \node[lifeline] (s) at (\xs,0) {Service +\\verification\_codes};
+    \node[lifeline] (m) at (\xm,0) {EmailService\\(SMTP)};
+    \foreach \x in {\xui,\xc,\xs,\xm} \draw[grisISO!50, thick] (\x,-0.4) -- (\x,-5.8);
+
+    \draw[msg] (\xui,-0.9) -- node[note, above]{\scriptsize POST /request} (\xc,-0.9);
+    \draw[msg] (\xc,-1.5) -- node[note, above]{\scriptsize genera OTP} (\xs,-1.5);
+    \draw[msg] (\xs,-2.1) -- node[note, above]{\scriptsize envía código} (\xm,-2.1);
+    \draw[ret] (\xc,-2.7) -- node[note, above]{\scriptsize 200 (siempre)} (\xui,-2.7);
+    \draw[msg] (\xui,-3.4) -- node[note, above]{\scriptsize POST /verify (código)} (\xc,-3.4);
+    \draw[msg] (\xc,-4.0) -- node[note, above]{\scriptsize valida + expira} (\xs,-4.0);
+    \draw[msg] (\xui,-4.7) -- node[note, above]{\scriptsize POST /reset (nueva clave)} (\xc,-4.7);
+    \draw[ret] (\xc,-5.3) -- node[note, above]{\scriptsize ApiResponse OK} (\xui,-5.3);
+\end{tikzpicture}
+\caption{Secuencia de recuperación de contraseña con código OTP por correo.}
+\label{fig:seq-otp}
+\end{figure}
+
+\begin{AlertaSeguridad}
+El \textit{endpoint} \pathbreak{/request} devuelve \texttt{200} \textbf{siempre}, exista o
+no la cuenta, para no revelar qué correos están registrados (mitigación de enumeración de
+usuarios). El código OTP tiene caducidad y un único uso: \comando{record\_login\_failure}
+y la lógica de bloqueo (cabecera \texttt{X-Blocked-Until}) limitan los intentos de fuerza
+bruta.
+\end{AlertaSeguridad}
+
+\subsection{Subida de archivos a Supabase Storage}
+\label{subsec:seq_upload}
+
+La subida de imágenes (fotos de perfil, medios de proyecto) la gestiona
+\comando{FileUploadController} (\pathbreak{POST /api/uploads}) delegando en
+\comando{SupabaseStorageService}, que envuelve la API REST de Storage sobre el \textit{bucket}
+\texttt{profile-assets} con semántica de \textit{upsert}. El servidor actúa como
+\textbf{intermediario de confianza}: el cliente nunca recibe la \texttt{service\_role key};
+es el backend quien firma la petición a Storage. Spring limita el tamaño a \textbf{20\,MB}
+por archivo (\texttt{max-file-size}) y \textbf{25\,MB} por petición.
+
+\subsection{Generación y exportación de currículums en el CV Studio}
+\label{subsec:seq_cv}
+
+El CV Studio es la funcionalidad de IA más rica del sistema. Combina dos operaciones
+asíncronas: la \textbf{asistencia generativa} (Gemini reescribe o sugiere texto) y la
+\textbf{compilación a PDF} mediante un compilador LaTeX externo. La
+figura~\ref{fig:seq-cv} muestra ambos ciclos.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    lifeline/.style={font=\sffamily\scriptsize\bfseries, align=center},
+    msg/.style={-{Stealth[length=2mm]}, semithick},
+    ret/.style={-{Stealth[length=2mm]}, semithick, dashed},
+    note/.style={font=\sffamily\scriptsize\itshape, text=grisISO}
+]
+    \def\xui{0} \def\xc{3.4} \def\xs{6.6} \def\xg{9.4}
+    \node[lifeline] (ui) at (\xui,0) {CV Studio\\(Monaco)};
+    \node[lifeline] (c) at (\xc,0) {CvDocument\\Controller};
+    \node[lifeline] (s) at (\xs,0) {Gemini /\\LatexCompile Svc};
+    \node[lifeline] (g) at (\xg,0) {Gemini API /\\Compilador LaTeX};
+    \foreach \x in {\xui,\xc,\xs,\xg} \draw[grisISO!50, thick] (\x,-0.4) -- (\x,-6.0);
+
+    \draw[msg] (\xui,-0.9) -- node[note, above]{\scriptsize POST /ai-assist} (\xc,-0.9);
+    \draw[msg] (\xc,-1.5) -- (\xs,-1.5);
+    \draw[msg] (\xs,-2.1) -- node[note, above]{\scriptsize prompt + historial} (\xg,-2.1);
+    \draw[ret] (\xg,-2.7) -- node[note, above]{\scriptsize sugerencia} (\xs,-2.7);
+    \draw[ret] (\xs,-3.3) -- node[note, above]{\scriptsize ApiResponse} (\xui,-3.3);
+    \draw[msg] (\xui,-4.0) -- node[note, above]{\scriptsize POST /compile-latex} (\xc,-4.0);
+    \draw[msg] (\xc,-4.6) -- node[note, above]{\scriptsize compile(code, fotoUrl)} (\xs,-4.6);
+    \draw[msg] (\xs,-5.1) -- node[note, above]{\scriptsize proceso externo} (\xg,-5.1);
+    \draw[ret] (\xs,-5.7) -- node[note, above]{\scriptsize PDF (binario, 200) / 422 si falla} (\xui,-5.7);
+\end{tikzpicture}
+\caption{Secuencia de asistencia IA y compilación de CV a PDF en el CV Studio.}
+\label{fig:seq-cv}
+\end{figure}
+
+\paragraph{Compilación LaTeX en proceso aislado.} El servicio
+\comando{LatexCompileService} no compila en el hilo de la JVM: crea un \textbf{directorio
+temporal único} (\texttt{tectonic-\{uuid\}}), \textbf{sanea} el código fuente
+(\comando{UnicodeLatexSanitizer}) para neutralizar caracteres Unicode problemáticos,
+inyecta la foto de perfil mediante el marcador \comando{\textbackslash ethoshubFotoPerfil}
+y lanza el binario del compilador como \textbf{proceso externo} con un \textit{timeout}
+de \textbf{120 segundos}. El binario se resuelve dinámicamente probando rutas candidatas
+(\pathbreak{/usr/bin/pdflatex}, \pathbreak{/usr/local/bin/pdflatex}). Si el proceso falla
+o expira, se devuelve \texttt{422} en lugar de propagar una excepción genérica.
+
+\begin{AlertaSeguridad}
+Compilar LaTeX arbitrario de usuario es un vector de riesgo (ejecución de \textit{shell}
+vía \texttt{\textbackslash write18}). La mitigación combina tres barreras: saneamiento
+previo del código, ejecución en directorio temporal efímero que se elimina al terminar
+(\texttt{Files.walk(...).sorted(reverseOrder)}), y \textit{timeout} estricto que aborta
+compilaciones colgadas o maliciosas.
+\end{AlertaSeguridad}
+
+\subsection{Procesamiento de \textit{insights} de reclutamiento mediante IA}
+\label{subsec:seq_ia}
+
+Los \textit{insights} del reclutador se generan invocando a \textbf{Gemini 2.5 Flash} a
+través del servicio \comando{RecruiterAiService}. El modelo opera anclado al JSON de
+perfiles que el backend inyecta en el \textit{prompt}, con configuración fija \\
+(\texttt{maxOutputTokens=8192}, \texttt{temperature=0.7}, \texttt{thinkingBudget=0}) y
+\textbf{cuatro modos} de operación seleccionados por el parámetro \texttt{mode}, descritos
+en la tabla~\ref{tab:ia-modos}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Modo (\texttt{mode})} & \sffamily\textbf{Comportamiento del modelo} \\
+\hline
+\texttt{weekly\_insights} & Resume en un párrafo ($\le$60 palabras) el foco semanal del reclutador y sugiere una acción concreta. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{compare\_verdict} & Evalúa cada perfil frente al rol: bloque Markdown con \textit{Pros}, \textit{Contras}, \textit{Riesgos} y una recomendación final. \\ \hline
+\texttt{ranking\_justification} & Explica en exactamente 2 frases por qué un perfil encabeza el \textit{ranking}, citando \textit{skills} y proyectos reales. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{nlp\_search} & Traduce una consulta en lenguaje natural a un objeto JSON de filtros estructurados (seniority, skills, institución, empresa). \\ \hline
+\end{tabularx}
+\label{tab:ia-modos}
+
+\paragraph{Traducción de errores \textit{upstream}.} El punto crítico de diseño es que un
+fallo de Gemini \textbf{no se propaga como un 500 genérico}. La factoría
+\comando{AiServiceException.fromUpstream()} mapea el estado del proveedor a un código
+accionable y un mensaje en español para la interfaz del reclutador, según la
+tabla~\ref{tab:ia-errores}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|C{2.6cm}|C{2.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Estado Gemini} & \sffamily\textbf{Estado devuelto} & \sffamily\textbf{Mensaje al usuario} \\
+\hline
+429 & 429 & ``El asistente IA alcanzó su límite de uso. Intenta de nuevo más tarde.'' \\
+\hline
+\rowcolor{grisTecnico}
+500 / 502 / 503 / 504 & 503 & ``El asistente IA no está disponible en este momento.'' \\
+\hline
+otros & 502 & ``Error del asistente IA (\textit{código}): \textit{mensaje}.'' \\
+\hline
+\end{tabularx}
+\label{tab:ia-errores}
+
+\begin{NotaTecnica}
+Tanto el CV Studio como los \textit{insights} de reclutamiento reutilizan la misma
+integración cruda con Gemini vía \texttt{HttpURLConnection} (\texttt{connectTimeout}
+15\,s, \texttt{readTimeout} 120\,s). Lo que cambia entre ambos es el \textit{system
+instruction} y el modo, no el transporte: una sola disciplina de manejo de errores
+\textit{upstream} cubre toda la superficie de IA del sistema.
+\end{NotaTecnica}
+
+\subsection{Anclaje del asistente y modos del CV Studio}
+\label{subsec:ia_cv_modos}
+
+El asistente del CV Studio (\comando{GeminiAiService}) mantiene un \textbf{historial
+multi-turno} de la conversación, de modo que el reescribir un párrafo conserva el contexto
+de los intercambios previos. Su \textit{system instruction} \textbf{ancla} la salida a un
+formato LaTeX seguro: según el modo, instruye al modelo a usar comandos LaTeX en modo
+matemático para símbolos (\texttt{\$\textbackslash geq\$}, \texttt{\$\textbackslash star\$})
+o a limitarse a texto ASCII y caracteres latinos acentuados, evitando viñetas Unicode que
+romperían la compilación posterior. Esta restricción de formato es lo que permite que la
+salida del modelo se compile directamente con Tectonic sin pasos de saneamiento adicionales
+más allá de \comando{UnicodeLatexSanitizer}.
+
+\begin{AvisoNota}
+La diferencia de gobernanza entre ambos asistentes de IA es ilustrativa: el del reclutador
+ancla la salida al \textbf{JSON de perfiles} para impedir alucinaciones sobre candidatos
+inexistentes, mientras que el del CV Studio ancla la salida al \textbf{formato LaTeX} para
+garantizar compilabilidad. En ambos casos, el \textit{system instruction} es el mecanismo
+de control que mantiene al modelo dentro de límites operativos seguros.
+\end{AvisoNota}

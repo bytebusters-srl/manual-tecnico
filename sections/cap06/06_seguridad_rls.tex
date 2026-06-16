@@ -1,0 +1,179 @@
+% =============================================================================
+% 6.7 SEGURIDAD DEL MOTOR Y POLÍTICAS RLS
+% =============================================================================
+\section{Seguridad del Motor y Políticas RLS}
+\label{sec:rls}
+
+La seguridad de los datos no descansa únicamente en el backend: PostgreSQL aplica
+\textbf{Row Level Security} (RLS) directamente en el motor, de modo que incluso un acceso
+directo desde el cliente web (con la \texttt{anon key} de Supabase) queda restringido a
+las filas que el usuario tiene derecho a ver. Esta es una defensa en profundidad: aunque
+fallara una comprobación en la aplicación, el motor seguiría protegiendo los datos.
+
+\subsection{Configuración de Políticas de Seguridad a Nivel de Fila (RLS)}
+\label{subsec:politicas_rls}
+
+De las 25 tablas de \texttt{core}, \textbf{23 tienen RLS habilitado}. Las dos excepciones
+(\comando{portfolio\_items} y \\ \comando{talent\_score\_snapshots}) se acceden
+exclusivamente a través del backend o de funciones, nunca directamente desde el cliente.
+La figura~\ref{fig:rls-flujo} ilustra los dos caminos de acceso a los datos y cómo RLS
+gobierna el acceso directo del cliente.
+
+\clearpage
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.9cm and 1.6cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.8cm, minimum height=0.9cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Componente!40] (cli) at (0,2.5) {Cliente SPA\\\scriptsize (anon key)};
+    \node[box, fill=c4Componente!40] (be) at (0,0) {Backend\\\scriptsize (service\_role / JWT)};
+    \node[box, fill=colorAcento!30, draw=colorAcento!80!black] (rls) at (4.4,2.5) {Políticas RLS\\\scriptsize auth.uid() = dueño};
+    \node[box, fill=c4Datos!25, draw=c4Datos!70!black] (db) at (4.4,0) {PostgreSQL\\\scriptsize esquema core};
+    \node[box, fill=c4Componente!40] (rpc) at (4.4,-1.6) {RPC SECURITY\\DEFINER};
+
+    \draw[rel] (cli) -- node[c4etiqueta, above]{SELECT directo} (rls);
+    \draw[rel] (rls) -- node[c4etiqueta, right]{filas permitidas} (db);
+    \draw[rel] (be) -- node[c4etiqueta, left]{jOOQ} (db);
+    \draw[rel] (be) to[bend right=20] node[c4etiqueta, below]{invoca} (rpc);
+    \draw[rel] (rpc) -- (db);
+\end{tikzpicture}
+\caption{Doble vía de acceso: el cliente pasa por RLS; el backend opera por jOOQ y RPCs.}
+\label{fig:rls-flujo}
+\end{figure}
+
+\paragraph{Patrones de política.} Las $\sim$70 políticas RLS se reducen a unos pocos
+patrones reutilizados, resumidos en la tabla~\ref{tab:patrones-rls}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.2}{9.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|>{\ttfamily\scriptsize}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Patrón} & \textbf{Expresión} & \textbf{Aplicación} \\
+\hline
+Dueño directo & profile\_id = auth.uid() & academic\_records, work\_experiences, cv\_documents, profile\_connections. \\
+\hline
+\rowcolor{grisTecnico}
+Participante de chat & EXISTS(... chats ...) & chat\_messages: solo los dos participantes ven/insertan mensajes. \\
+\hline
+Lectura pública & visibility = 'Public' & projects, project\_media: lectura por \texttt{anon} solo de contenido público no borrado. \\
+\hline
+\rowcolor{grisTecnico}
+Portafolio publicado & is\_published = true & portfolio\_settings: visible si está publicado. \\
+\hline
+Doble parte & company OR basic = uid() & profile\_likes, chats: visible para reclutador o candidato. \\
+\hline
+\rowcolor{grisTecnico}
+Solo service\_role & true (service\_role) & verification\_codes, hard\_skills, soft\_skills: gestionados por el backend. \\
+\hline
+\end{tabularx}
+\label{tab:patrones-rls}
+
+A continuación, dos políticas reales que ejemplifican los patrones más sofisticados: la
+visibilidad de mensajes restringida a los participantes del chat, y la nueva política
+(v1.1.0) que permite a un candidato ver los \textit{likes} recibidos.
+
+\begin{lstlisting}[language=SQL, caption={Políticas RLS representativas (esquema \texttt{core}).}]
+-- Solo los participantes del chat ven sus mensajes
+CREATE POLICY "participants can view messages" ON core.chat_messages FOR SELECT
+USING (EXISTS (SELECT 1 FROM core.chats c
+   WHERE c.chat_id = chat_messages.chat_id
+     AND (c.company_profile_id = auth.uid() OR c.basic_profile_id = auth.uid())));
+
+-- El candidato puede ver los likes que ha recibido (migración V15)
+CREATE POLICY profile_likes_owner_select ON core.profile_likes FOR SELECT
+USING (basic_profile_id = auth.uid());
+\end{lstlisting}
+
+\subsection{Gestión de roles de base de datos}
+\label{subsec:roles}
+
+El modelo de acceso de Supabase define tres roles principales sobre los que se evalúan
+las políticas RLS. La tabla~\ref{tab:roles} describe cada uno y su uso en EthosHub.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Rol} & \sffamily\textbf{Descripción y uso} \\
+\hline
+anon & Usuario \textbf{no autenticado}. Solo accede a lectura pública (portafolios publicados, proyectos \texttt{Public}). \\
+\hline
+\rowcolor{grisTecnico}
+authenticated & Usuario \textbf{autenticado} (JWT válido). Las políticas comparan \texttt{auth.uid()} contra el dueño de la fila. \\
+\hline
+service\_role & Rol \textbf{privilegiado} del backend. Evade RLS (\texttt{USING true}) para operaciones de servidor; su clave nunca se expone al cliente. \\
+\hline
+\end{tabularx}
+\label{tab:roles}
+
+\begin{AlertaSeguridad}
+La \comando{anon key} es \textbf{pública por diseño} y se expone en el cliente; su
+seguridad reposa íntegramente en RLS. La \comando{service\_role key}, en cambio, evade
+RLS y \textbf{nunca} debe llegar al navegador: vive solo en el backend como variable de
+entorno. La separación estricta entre ambas claves es la piedra angular del modelo de
+seguridad de datos de EthosHub.
+\end{AlertaSeguridad}
+
+\subsection{Síntesis de la cobertura de seguridad}
+\label{subsec:sintesis_rls}
+
+La tabla~\ref{tab:cobertura-rls} ofrece una visión consolidada de la cobertura de RLS
+por tabla, evidenciando que ninguna tabla con datos de usuario queda desprotegida.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.2}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\scriptsize\color{colorPrimario}}l|c|c|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Tabla} & \sffamily\textbf{RLS} & \sffamily\textbf{Pol.} & \sffamily\textbf{Modelo de acceso} \\
+\hline
+profiles\_basic & Sí & 2 & Dueño (escritura) + lectura autenticada. \\ \hline
+profiles\_company & Sí & 2 & Dueño + lectura autenticada. \\ \hline
+\rowcolor{grisTecnico}
+projects & Sí & 3 & Dueño + lectura pública + service\_role. \\ \hline
+project\_media & Sí & 3 & Dueño vía proyecto + público + service\_role. \\ \hline
+\rowcolor{grisTecnico}
+work\_experiences & Sí & 4 & Dueño (CRUD completo). \\ \hline
+academic\_records & Sí & 4 & Dueño (CRUD completo). \\ \hline
+\rowcolor{grisTecnico}
+hard\_skills / soft\_skills & Sí & 2 & Lectura autenticada + service\_role. \\ \hline
+cv\_documents & Sí & 1 & Dueño (ALL). \\ \hline
+\rowcolor{grisTecnico}
+portfolio\_settings & Sí & 2 & Dueño + publicado. \\ \hline
+profile\_connections & Sí & 2 & Dueño + service\_role. \\ \hline
+\rowcolor{grisTecnico}
+chats & Sí & 7 & Participantes (con borrado por parte). \\ \hline
+chat\_messages & Sí & 7 & Participantes (ver/insertar/borrar propios). \\ \hline
+\rowcolor{grisTecnico}
+profile\_likes & Sí & 8 & Reclutador (CRUD) + candidato (ver recibidos). \\ \hline
+recruiter\_candidate\_notes & Sí & 1 & Reclutador dueño. \\ \hline
+\rowcolor{grisTecnico}
+recruiter\_talent\_views & Sí & 4 & Reclutador dueño. \\ \hline
+notifications & Sí & 2 & Dueño (ver/actualizar). \\ \hline
+\rowcolor{grisTecnico}
+verification\_codes & Sí & 1 & Solo service\_role (OTP blindado). \\ \hline
+portfolio\_items & No & 0 & Acceso solo vía backend. \\ \hline
+\rowcolor{grisTecnico}
+talent\_score\_snapshots & No & 0 & Acceso solo vía funciones. \\ \hline
+\end{tabularx}
+\label{tab:cobertura-rls}
+
+\clearpage
+\begin{AvisoNota}
+La tabla \comando{profile\_likes} concentra 8 políticas porque modela un recurso
+compartido entre dos actores con derechos asimétricos: el reclutador gestiona el
+\textit{like} (crear, mover de fase, eliminar), mientras que el candidato solo puede
+\textbf{ver} los que ha recibido. Este matiz, introducido en la migración V15, es un
+ejemplo de cómo RLS expresa reglas de negocio finas directamente en el motor.
+\end{AvisoNota}

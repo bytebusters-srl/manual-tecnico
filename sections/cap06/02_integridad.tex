@@ -1,0 +1,175 @@
+% =============================================================================
+% 6.3 INTEGRIDAD REFERENCIAL Y RESTRICCIONES
+% =============================================================================
+\section{Integridad Referencial y Restricciones}
+\label{sec:integridad}
+
+La integridad de los datos se garantiza a \textbf{nivel de motor}, no solo en la capa de
+aplicación. PostgreSQL valida claves primarias, foráneas, restricciones de unicidad y
+de verificación antes de aceptar cualquier escritura, de modo que un cliente
+malicioso o un error de la aplicación no puedan corromper el modelo.
+
+% -----------------------------------------------------------------------------
+\subsection{Llaves Primarias y Foráneas con sus políticas}
+\label{subsec:pk_fk}
+
+\paragraph{Llaves primarias.} El esquema usa mayoritariamente \textbf{UUID v4} como
+clave primaria (\texttt{gen\_random\_uuid()}), con dos excepciones notables:
+\comando{notifications} usa un \texttt{bigint} secuencial (alto volumen, orden natural),
+y \comando{profile\_preferences}, \comando{profiles\_basic}, \comando{profiles\_company}
+usan como PK el propio \texttt{id\_auth} (relación 1:1 con \texttt{auth.users}). La tabla
+\comando{chat\_typing} emplea una \textbf{PK compuesta} \texttt{(chat\_id, user\_id)}.
+
+\paragraph{Llaves foráneas y política de borrado.} La política de borrado dominante es
+\comando{ON DELETE CASCADE}: al eliminar un perfil, se eliminan en cascada todos sus
+proyectos, experiencias, habilidades, chats, etc. La única excepción es
+\comando{portfolio\_settings.selected\_cv\_document\_id}, que usa \comando{ON DELETE SET
+NULL} para no perder la configuración del portafolio si se borra el CV seleccionado. La
+figura~\ref{fig:fk-cascada} ilustra el grafo de propagación de borrado desde la raíz.
+
+\clearpage
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    ent/.style={rectangle, draw=c4Sistema!70!black, fill=c4Componente!25, font=\sffamily\scriptsize,
+        align=center, minimum width=2.4cm, minimum height=0.6cm, inner sep=2pt},
+    raiz/.style={ent, fill=c4Persona, text=white, font=\sffamily\scriptsize\bfseries},
+    casc/.style={-{Stealth[length=2mm]}, semithick, draw=bgFail!80!black},
+    setnull/.style={-{Stealth[length=2mm]}, semithick, dashed, draw=colorAcento!80!black}]
+    \node[raiz] (auth) at (0,3) {auth.users};
+    \node[raiz] (pb) at (-3,1.8) {profiles\_basic};
+    \node[raiz] (pc) at (3,1.8) {profiles\_company};
+
+    \node[ent] (c1) at (-5.2,0.4) {projects};
+    \node[ent] (c2) at (-3,0.4) {work\_experiences};
+    \node[ent] (c3) at (-0.9,0.4) {hard\_skills};
+    \node[ent] (c1b) at (-5.2,-0.6) {project\_media};
+    \node[ent] (pset) at (-3,-0.6) {portfolio\_settings};
+    \node[ent] (cv) at (-0.9,-0.6) {cv\_documents};
+
+    \node[ent] (k1) at (2.4,0.4) {chats};
+    \node[ent] (k2) at (4.8,0.4) {profile\_likes};
+    \node[ent] (k1b) at (2.4,-0.6) {chat\_messages};
+
+    \draw[casc] (auth) -- node[c4etiqueta]{CASCADE} (pb);
+    \draw[casc] (auth) -- node[c4etiqueta]{CASCADE} (pc);
+    \foreach \n in {c1,c2,c3} \draw[casc] (pb) -- (\n);
+    \draw[casc] (c1) -- (c1b);
+    \draw[casc] (pb) -- (pset);
+    \draw[casc] (pb) -- (cv);
+    \draw[setnull] (cv) to[bend left=20] node[c4etiqueta, right]{SET NULL} (pset);
+    \draw[casc] (pc) -- (k1); \draw[casc] (pc) -- (k2);
+    \draw[casc] (k1) -- (k1b);
+\end{tikzpicture}
+\caption{Grafo de propagación de borrado: CASCADE (rojo) y SET NULL (amarillo).}
+\label{fig:fk-cascada}
+\end{figure}
+
+\begin{NotaTecnica}
+Varias FK apuntan directamente a \texttt{auth.users(id)} en lugar de a la tabla de
+perfil (\texttt{profile\_connections}, \texttt{profile\_preferences},
+\texttt{profile\_security\_codes}, \texttt{verification\_codes}, \texttt{chat\_messages.sender\_id}).
+Esto ancla esos datos a la identidad de autenticación, garantizando consistencia con
+las políticas RLS que comparan contra \texttt{auth.uid()}.
+\end{NotaTecnica}
+
+\paragraph{Restricciones de unicidad.} Más allá de las PK, el esquema define UNIQUE de
+negocio resumidas en la tabla~\ref{tab:unique}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Tabla} & \sffamily\textbf{Restricción de unicidad} \\
+\hline
+chats & \texttt{(company\_profile\_id, basic\_profile\_id)}: un único chat por par. \\
+\hline
+\rowcolor{grisTecnico}
+profile\_likes & \texttt{(company\_profile\_id, basic\_profile\_id)}: un like por par. \\
+\hline
+recruiter\_talent\_views & \texttt{(company\_profile\_id, basic\_profile\_id)}: una vista por par. \\
+\hline
+\rowcolor{grisTecnico}
+portfolio\_settings & \texttt{(profile\_id)}: un portafolio por perfil. \\
+\hline
+global\_skill\_tags & \texttt{(name)}: nombre de habilidad único. \\
+\hline
+\rowcolor{grisTecnico}
+talent\_score\_snapshots & \texttt{(basic\_profile\_id, niche, week\_start)}: un snapshot por nicho/semana. \\
+\hline
+portfolio\_items & \texttt{(portfolio\_settings\_id, item\_type, item\_id)}: ítem único por portafolio. \\
+\hline
+\rowcolor{grisTecnico}
+email\_change\_requests & \texttt{(token\_hash)}: token de cambio único. \\
+\hline
+\end{tabularx}
+\label{tab:unique}
+
+% -----------------------------------------------------------------------------
+\subsection{Restricciones de verificación (CHECK)}
+\label{subsec:check}
+
+Las restricciones \textbf{CHECK} validan dominios de datos atómicos directamente en el
+motor, actuando como una capa de defensa independiente de la validación de la
+aplicación. La tabla~\ref{tab:checks} cataloga las más relevantes; nótese cómo
+codifican las máquinas de estados y enumeraciones del dominio.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.2}{9.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\color{colorPrimario}}l|>{\ttfamily}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Tabla} & \sffamily\textbf{Columna} & \sffamily\textbf{Dominio validado (CHECK)} \\
+\hline
+projects & status & draft, in\_progress, completed, archived \\
+\hline
+\rowcolor{grisTecnico}
+projects & category & Web, Mobile, API, Data, DevOps, Other \\
+\hline
+projects & visibility & Public, Private \\
+\hline
+\rowcolor{grisTecnico}
+hard\_skills & level & Junior, Mid, Senior \\
+\hline
+hard\_skills & top\_order & NULL o entero 1–3; requiere \texttt{is\_top = true} \\
+\hline
+\rowcolor{grisTecnico}
+profile\_likes & stage & saved, review, interview, offer, hired \\
+\hline
+academic\_records & education\_type & university, master\_degree, phd, certification, course, bootcamp, high\_school \\
+\hline
+\rowcolor{grisTecnico}
+academic\_records & gpa & NULL o rango 0–100 \\
+\hline
+profile\_connections & provider & email, github, google, linkedin, … (+20), custom \\
+\hline
+\rowcolor{grisTecnico}
+profile\_connections & api\_health & healthy, degraded, down \\
+\hline
+chat\_messages & attachment\_type & image, audio, file, video \\
+\hline
+\rowcolor{grisTecnico}
+notifications & type & endorsement, visit, recommendation, system, message \\
+\hline
+verification\_codes & code & exactamente 6 dígitos (regex \texttt{\^{}\textbackslash d\{6\}\$}) \\
+\hline
+\rowcolor{grisTecnico}
+work\_experiences & (varios) & fechas coherentes; descripción <= 1000 car.; campos no vacíos \\
+\hline
+\end{tabularx}
+\label{tab:checks}
+
+\begin{AvisoNota}
+Las restricciones de fecha del tipo \comando{end\_date >= start\_date} aparecen de forma
+consistente en \texttt{projects}, \texttt{work\_experiences} y \texttt{academic\_records},
+evitando rangos temporales inválidos a nivel de motor. El CHECK
+\comando{chk\_top\_order\_requires\_is\_top} es un ejemplo de regla de negocio compuesta
+embebida en la base de datos.
+\end{AvisoNota}

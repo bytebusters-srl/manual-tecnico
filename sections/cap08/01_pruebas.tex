@@ -1,0 +1,123 @@
+% =============================================================================
+% 8.1 ESTRATEGIA DE PRUEBAS DE SOFTWARE
+% =============================================================================
+\section{Estrategia de Pruebas de Software}
+\label{sec:pruebas}
+
+La estrategia de pruebas de EthosHub se reparte entre los dos componentes del sistema con
+herramientas idiomáticas a cada \textit{stack}: \textbf{Testcontainers} y \textbf{JUnit}
+en el backend, \textbf{Vitest} y \textbf{Testing Library} en el frontend. La
+figura~\ref{fig:piramide} sitúa cada nivel de prueba en la clásica \textbf{pirámide de
+pruebas}.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[font=\sffamily\scriptsize]
+    \fill[colorAcento!30, draw=colorAcento!80!black] (0,3) -- (-1.1,1.8) -- (1.1,1.8) -- cycle;
+    \fill[c4Contenedor!40, draw=c4Sistema!70!black] (-1.1,1.8) -- (-2.3,0.6) -- (2.3,0.6) -- (1.1,1.8) -- cycle;
+    \fill[c4Componente!45, draw=c4Sistema!70!black] (-2.3,0.6) -- (-3.5,-0.6) -- (3.5,-0.6) -- (2.3,0.6) -- cycle;
+    \node at (0,2.35) {E2E};
+    \node[align=center] at (0,1.15) {Integración\\\scriptsize Testcontainers + JUnit};
+    \node[align=center] at (0,-0.05) {Unitarias / Renderizado\\\scriptsize Vitest · Testing Library · JUnit};
+    \draw[-{Stealth[length=2mm]}, grisISO] (4.4,-0.6) -- node[right, text=grisISO, font=\sffamily\tiny]{realismo} (4.4,3.0);
+    \draw[-{Stealth[length=2mm]}, grisISO] (-4.4,3.0) -- node[left, text=grisISO, font=\sffamily\tiny]{volumen} (-4.4,-0.6);
+\end{tikzpicture}
+\caption{Pirámide de pruebas de EthosHub por nivel y herramienta.}
+\label{fig:piramide}
+\end{figure}
+
+\subsection{Pruebas de integración del backend con Testcontainers}
+\label{subsec:testcontainers}
+
+Las pruebas de integración del backend ejecutan contra un \textbf{PostgreSQL real},
+levantado en un contenedor efímero mediante \textbf{Testcontainers}. Así se elimina la
+brecha entre el entorno de prueba y el de producción: el SQL tipado de jOOQ
+(capítulo~\ref{ch:backend}, sección~\ref{subsec:jooq}, pág.~\pageref{subsec:jooq}) se
+verifica contra el mismo motor que se usará en producción, no contra una base de datos
+en memoria con dialecto distinto.
+
+\clearpage
+\begin{lstlisting}[language=Java, caption={Configuración de Testcontainers con \texttt{@ServiceConnection} (\texttt{TestcontainersConfiguration.java}).}, label={lst:testcontainers}]
+@TestConfiguration(proxyBeanMethods = false)
+class TestcontainersConfiguration {
+    @Bean
+    @ServiceConnection
+    PostgreSQLContainer<?> postgresContainer() {
+        return new PostgreSQLContainer<>(
+            DockerImageName.parse("postgres:latest"));
+    }
+}
+\end{lstlisting}
+
+La anotación \comando{@ServiceConnection} (Spring Boot) conecta automáticamente el
+contenedor con el \textit{datasource} de la aplicación, sin configuración manual de URL,
+usuario o contraseña. La tabla~\ref{tab:tests-backend} enumera las clases de prueba reales
+del backend y su objetivo.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{5.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Clase de prueba} & \sffamily\textbf{Verifica} \\
+\hline
+\texttt{EthosHubApplicationTests} & Que el contexto de Spring arranca correctamente. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{AuthControllerSecurityTest} & La protección de los \textit{endpoints} de autenticación. \\ \hline
+\texttt{AuthServiceOAuthSyncTest} & La sincronización de perfil tras un \textit{login} OAuth. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{UserRoleTest} & La derivación y validación del rol de usuario. \\ \hline
+\end{tabularx}
+\label{tab:tests-backend}
+
+\begin{NotaTecnica}
+La pila de pruebas del backend (declarada en \texttt{pom.xml}) combina
+\texttt{spring-boot-starter-test}, \texttt{spring-boot-testcontainers},
+\texttt{testcontainers-junit-jupiter}, \texttt{testcontainers-postgresql} y
+\texttt{spring-security-test}. Esta última habilita la simulación de usuarios autenticados
+con roles concretos, esencial para verificar la matriz de permisos del
+capítulo~\ref{ch:requisitos} (pág.~\pageref{ch:requisitos}).
+\end{NotaTecnica}
+
+\subsection{Pruebas del frontend con Vitest y Testing Library}
+\label{subsec:vitest_vyv}
+
+El frontend usa \textbf{Vitest 4} sobre un entorno virtual \textbf{jsdom}, con
+\textbf{Testing Library} para interactuar con los componentes como lo haría una persona
+usuaria (consultas por rol accesible, eventos de usuario), no por detalles de
+implementación. La configuración vive en \pathbreak{vite.config.ts} (bloque \texttt{test})
+y carga \pathbreak{src/test/setup.ts}, como resume la tabla~\ref{tab:vitest}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Parámetro} & \sffamily\textbf{Valor} \\
+\hline
+\texttt{environment} & \texttt{jsdom} (DOM virtual en Node). \\ \hline
+\rowcolor{grisTecnico}
+\texttt{globals} & \texttt{true} (API de pruebas global sin importaciones). \\ \hline
+\texttt{setupFiles} & \pathbreak{./src/test/setup.ts} (matchers de jest-dom). \\ \hline
+\rowcolor{grisTecnico}
+\texttt{alias} & \texttt{@ $\rightarrow$ ./src} (coherente con el \textit{build}). \\ \hline
+\end{tabularx}
+\label{tab:vitest}
+
+El ejemplo canónico es \pathbreak{src/test/authFlow.test.tsx}, que valida el flujo de
+autenticación de extremo a extremo dentro del cliente (formulario, \textit{store},
+redirección por rol), apoyándose en el \textit{custom hook} \texttt{useAuthFlow}
+(capítulo~\ref{ch:frontend}, sección~\ref{subsec:hooks}, pág.~\pageref{subsec:hooks}).
+
+\begin{AvisoNota}
+El \textit{linting} con \textbf{ESLint} y la verificación de tipos con \textbf{TypeScript}
+estricto (capítulo~\ref{ch:frontend}, sección~\ref{sec:calidad_fe},
+pág.~\pageref{sec:calidad_fe}) constituyen una primera línea de verificación
+\textbf{estática} que se ejecuta antes que cualquier prueba: detectan una clase entera de
+errores sin necesidad de ejecutar el código.
+\end{AvisoNota}

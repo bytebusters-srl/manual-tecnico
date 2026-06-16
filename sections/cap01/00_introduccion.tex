@@ -1,0 +1,432 @@
+% =============================================================================
+% CAPÍTULO 1 — INTRODUCCIÓN Y ASPECTOS GENERALES (ISO/IEC/IEEE 15289:2024)
+% =============================================================================
+\chapter{Introducción y Aspectos Generales}
+\label{ch:introduccion}
+\resumenCapitulo{Este capítulo presenta el propósito, el alcance y la audiencia del manual,
+fija el glosario y las referencias normativas, y describe la política de versionado del
+documento y de la plataforma. Constituye el marco de referencia que contextualiza los
+capítulos técnicos siguientes.}
+
+Este capítulo establece el marco de referencia del presente Manual Técnico. Conforme
+al estándar \textbf{ISO/IEC/IEEE 15289:2024} —que define el contenido de los productos
+de información del ciclo de vida del software y de los sistemas— se delimita el
+propósito, la audiencia, el alcance, el vocabulario controlado y la estrategia de
+trazabilidad que rigen el resto del documento.
+
+El estándar ISO/IEC/IEEE 15289 clasifica los productos de información en cuatro tipos:
+\textit{descripción} (\textit{description}), \textit{plan}, \textit{política}
+(\textit{policy}), \textit{procedimiento} (\textit{procedure}), \textit{reporte},
+\textit{solicitud}, \textit{especificación} (\textit{specification}) y otros. El
+presente Manual Técnico constituye principalmente una \textbf{descripción de diseño
+arquitectónico} (\textit{architecture description}) y una \textbf{especificación de
+diseño} (\textit{design specification}), complementada con elementos de
+especificación de requisitos regidos por \textbf{IEEE 830}. En consecuencia, todo su
+contenido se subordina a un principio rector: \textit{ser verificable contra el código
+fuente real de la plataforma}, evitando descripciones genéricas o aspiracionales.
+
+\begin{AvisoNota}
+Cada afirmación técnica de este manual es trazable a un artefacto concreto del
+repositorio: un paquete Java, un componente React, una migración SQL o un archivo de
+configuración. Las referencias a clases, métodos y rutas emplean tipografía
+\comando{monoespaciada} precisamente para resaltar dicha trazabilidad.
+\end{AvisoNota}
+
+\paragraph{Organización del documento.} El manual se estructura en nueve capítulos que
+recorren el sistema desde lo general a lo particular: la introducción y los requisitos
+(capítulos~\ref{ch:introduccion} y~\ref{ch:requisitos}) fijan el \textit{qué}; la
+arquitectura global C4 (capítulo~\ref{ch:arquitectura}) describe el \textit{cómo} a
+alto nivel; los capítulos de diseño detallado de backend, frontend y base de datos
+descienden al \textit{cómo} concreto; y los capítulos finales cubren las integraciones
+externas, la verificación y validación, y los anexos documentales.
+
+% -----------------------------------------------------------------------------
+\section{Propósito y Audiencia del Documento}
+\label{sec:proposito}
+
+El propósito de este manual es servir como \textbf{fuente única y autoritativa} de la
+arquitectura, el diseño detallado y las decisiones técnicas de la plataforma
+\textbf{EthosHub} en su versión \texttt{1.1.0}. A diferencia de un manual de usuario,
+este documento describe el \textit{cómo} y el \textit{porqué} de la construcción del
+sistema, habilitando su mantenimiento, evolución y operación a lo largo del tiempo.
+
+El documento está dirigido a tres perfiles profesionales:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Ingenieros de software (Backend y Frontend):} responsables de
+    mantener y evolucionar el monolito Spring Boot y la SPA React. Encontrarán
+    diagramas de clases, secuencias de operaciones clave, contratos de la API REST y
+    la organización del código por \textit{feature}.
+    \item \textbf{Administradores de bases de datos (DBA):} responsables del esquema
+    \texttt{core} sobre PostgreSQL/Supabase. Encontrarán el diccionario de datos
+    exhaustivo, las políticas de integridad referencial, la estrategia de indexación
+    y las políticas de seguridad a nivel de fila (RLS).
+    \item \textbf{Personal de operaciones (DevOps):} responsable del empaquetado, el
+    despliegue y la observabilidad. Encontrarán el flujo de construcción monolítica
+    (\comando{build.sh}), la especificación del contenedor Docker y la gestión de
+    configuraciones y secretos.
+\end{itemize}
+
+Dado que cada perfil consulta el manual con objetivos distintos, la
+tabla~\ref{tab:guia-lectura} ofrece una \textbf{guía de lectura orientada por rol},
+indicando los capítulos de mayor relevancia para cada audiencia y los conocimientos
+previos que se asumen.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|c|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Perfil} & \textbf{Conocimientos asumidos y capítulos prioritarios} & \textbf{Capítulos} \\
+\hline
+Ingeniero Backend & Java 17, Spring Boot, OAuth2, SQL tipado (jOOQ). Diseño de la API, secuencias y excepciones. & 3, 4, 6, 7 \\
+\hline
+\rowcolor{grisTecnico}
+Ingeniero Frontend & React 18, TypeScript estricto, Zustand, React Router. Componentes, \textit{stores}, interceptores. & 3, 5, 7 \\
+\hline
+DBA & PostgreSQL, RLS, indexación, PL/pgSQL. Diccionario de datos, integridad y triggers. & 6 \\
+\hline
+\rowcolor{grisTecnico}
+DevOps / Operaciones & Docker, variables de entorno, CI. Empaquetado, entornos y gestión de secretos. & 3, 8, 9 \\
+\hline
+\end{tabularx}
+\label{tab:guia-lectura}
+
+\begin{AvisoNota}
+Para tareas de instalación y puesta en marcha paso a paso consulte el \textit{Manual
+de Instalación}; para la operativa funcional de la plataforma, el \textit{Manual de
+Usuario}. Este manual asume conocimientos sólidos de Java, Spring, React, SQL y
+contenedores, por lo que no explica dichas tecnologías base, sino su \textbf{aplicación
+concreta} en EthosHub.
+\end{AvisoNota}
+
+% -----------------------------------------------------------------------------
+\section{Alcance del Sistema}
+\label{sec:alcance}
+
+\textbf{EthosHub} es una plataforma unificada de \textit{Talent Hub} que articula dos
+experiencias complementarias sobre un mismo dominio de datos:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Construcción de portafolios profesionales.} El profesional
+    construye un portafolio público enriquecido: proyectos (con documentos PDF y
+    archivos importados desde Google Drive), experiencia laboral, formación
+    académica, habilidades técnicas y blandas, y un currículum interactivo generado
+    en el \textit{CV Studio} con asistencia de IA.
+    \item \textbf{Descubrimiento de talento.} El reclutador descubre, filtra y conecta
+    con talento mediante un \textit{pipeline} tipo Kanban, métricas, un
+    \textit{leaderboard} e \textit{insights} asistidos por inteligencia artificial.
+\end{enumerate}
+
+El alcance técnico documentado cubre el \textbf{monolito empaquetado} que integra el
+backend (\texttt{ethoshubB}, Spring Boot) y el frontend (\texttt{ethoshubF}, React SPA)
+en un único artefacto ejecutable, junto con sus dependencias externas: \textbf{Supabase}
+(autenticación, base de datos PostgreSQL y comunicación en tiempo real),
+\textbf{Google Gemini} (servicios de IA) y \textbf{Google Drive} (importación de
+archivos).
+
+El \textbf{stack tecnológico} que materializa este alcance se resume en la
+tabla~\ref{tab:stack-global}, organizado por capa. Estas elecciones tecnológicas
+condicionan transversalmente el diseño documentado en los capítulos siguientes.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Capa} & \textbf{Tecnología} & \textbf{Rol en EthosHub} \\
+\hline
+Lenguaje (BE) & Java 17 & Lenguaje del monolito Spring Boot. \\
+\hline
+\rowcolor{grisTecnico}
+Framework (BE) & Spring Boot 4.0.x & Web MVC, Security (Resource Server), Validation, Actuator, Mail. \\
+\hline
+Persistencia & jOOQ + Spring JDBC & SQL tipado contra el esquema \texttt{core}. \\
+\hline
+\rowcolor{grisTecnico}
+Base de datos & PostgreSQL (Supabase) & Almacenamiento relacional con RLS y RPCs \texttt{SECURITY DEFINER}. \\
+\hline
+Lenguaje (FE) & TypeScript 5.3 (\textit{strict}) & Tipado estático de la SPA. \\
+\hline
+\rowcolor{grisTecnico}
+Framework (FE) & React 18.3 + Vite 5.1 & SPA y servidor de desarrollo con HMR. \\
+\hline
+Estado (FE) & Zustand 4.5 & \textit{Stores} por dominio con persistencia en \textit{sessionStorage}. \\
+\hline
+\rowcolor{grisTecnico}
+IA & Google Gemini (REST) & Asistente de CV Studio e \textit{insights} de reclutamiento. \\
+\hline
+Documentación API & springdoc-openapi 2.7 & Generación de Swagger UI y OpenAPI. \\
+\hline
+\rowcolor{grisTecnico}
+Empaquetado & Maven + Docker & JAR monolítico y contenedor con Tectonic. \\
+\hline
+\end{tabularx}
+\label{tab:stack-global}
+
+\vspace{0.4cm}
+Para delimitar con precisión qué responsabilidades asume EthosHub y cuáles delega, la
+figura~\ref{fig:alcance} contrasta los elementos \textbf{dentro} y \textbf{fuera} del
+alcance del sistema.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    item/.style={rectangle, rounded corners=2pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=3.4cm, minimum height=0.7cm, inner sep=3pt},
+    dentro/.style={item, fill=c4Componente!30, draw=c4Sistema!70!black},
+    fuera/.style={item, fill=c4Externo!20, draw=c4Externo!70!black, dashed}
+]
+    \node[font=\sffamily\footnotesize\bfseries\color{c4Sistema}] (td) at (-3.2,4.1) {Dentro del alcance};
+    \node[font=\sffamily\footnotesize\bfseries\color{c4Externo!60!black}] (tf) at (3.2,4.1) {Fuera del alcance (delegado)};
+
+    \node[dentro] (d1) at (-3.2,3.3) {Portafolios y contenido profesional};
+    \node[dentro] (d2) at (-3.2,2.4) {Descubrimiento de talento};
+    \node[dentro] (d3) at (-3.2,1.5) {Empaquetado monolítico};
+    \node[dentro] (d4) at (-3.2,0.6) {Validación de JWT (Resource Server)};
+    \node[dentro] (d5) at (-3.2,-0.3) {Orquestación de IA y exportación de CV};
+
+    \node[fuera] (f1) at (3.2,3.3) {Emisión de credenciales (Supabase Auth)};
+    \node[fuera] (f2) at (3.2,2.4) {Hosting de la base de datos (Supabase)};
+    \node[fuera] (f3) at (3.2,1.5) {Modelos de IA (Google Gemini)};
+    \node[fuera] (f4) at (3.2,0.6) {Almacenamiento de archivos (Drive/Supabase)};
+    \node[fuera] (f5) at (3.2,-0.3) {Entrega de correo (SMTP Gmail)};
+
+    \draw[grisISO, thick, dashed] (0,4.0) -- (0,-0.7);
+\end{tikzpicture}
+\caption{Delimitación del alcance: responsabilidades propias frente a servicios delegados.}
+\label{fig:alcance}
+\end{figure}
+
+\begin{NotaTecnica}
+\textbf{Fuera de alcance.} La autenticación de usuarios se delega íntegramente en
+\textbf{Supabase Auth}: el backend actúa como \textit{Resource Server} OAuth2 y solo
+valida los \textit{tokens} JWT emitidos por Supabase; no implementa un servidor de
+autorización propio. Esta decisión reduce la superficie de ataque del backend y
+externaliza la gestión de contraseñas, MFA y proveedores OAuth a un servicio
+especializado.
+\end{NotaTecnica}
+
+% -----------------------------------------------------------------------------
+\section{Definiciones, Acrónimos y Abreviaturas}
+\label{sec:definiciones}
+
+\subsection{Glosario de términos arquitectónicos}
+\label{subsec:glosario_arq}
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Término} & \textbf{Definición} \\
+\hline
+BaaS & \textit{Backend as a Service}. Modelo en el que servicios de infraestructura (autenticación, base de datos, tiempo real, almacenamiento) se consumen como servicio gestionado. En EthosHub, este rol lo cumple \textbf{Supabase}. \\
+\hline
+\rowcolor{grisTecnico}
+SPA & \textit{Single Page Application}. Aplicación web que carga una sola página HTML y reescribe dinámicamente su contenido vía JavaScript. El frontend de EthosHub es una SPA React. \\
+\hline
+Monolito Empaquetado & Patrón de despliegue en el que la SPA compilada (\comando{dist/}) se copia al directorio estático de Spring Boot y se sirve desde el mismo JAR ejecutable que la API REST. Un único artefacto despliega API y cliente. \\
+\hline
+\rowcolor{grisTecnico}
+Modelo C4 & Notación de \textit{Context, Containers, Components, Code} para describir arquitecturas de software por niveles de abstracción. Se emplea en el capítulo~\ref{ch:arquitectura}. \\
+\hline
+\textit{Vertical Slice} & Organización del código por \textit{feature} (dominio funcional) en lugar de por capa técnica: cada paquete agrupa su \textit{controller}, \textit{service}, \textit{repository} y DTOs. \\
+\hline
+\rowcolor{grisTecnico}
+Resource Server & Componente OAuth2 que protege recursos validando \textit{tokens} de acceso (JWT) sin emitirlos. \\
+\hline
+RLS & \textit{Row Level Security}. Mecanismo de PostgreSQL que restringe el acceso a filas individuales según políticas asociadas al rol del usuario. \\
+\hline
+\rowcolor{grisTecnico}
+RPC \texttt{SECURITY DEFINER} & Función de PostgreSQL que se ejecuta con los privilegios de su propietario, usada para operar de forma controlada por encima de las políticas RLS. \\
+\hline
+JWT / JWKS & \textit{JSON Web Token} y \textit{JSON Web Key Set}. El JWT transporta la identidad firmada; el JWKS publica las claves públicas para validar dicha firma. \\
+\hline
+\end{tabularx}
+
+\subsection{Definiciones de dominio de negocio}
+\label{subsec:glosario_negocio}
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Término} & \textbf{Definición} \\
+\hline
+Perfil & Identidad profesional de un usuario en la plataforma. Es la entidad raíz del dominio (tabla \comando{core.profiles}); de ella cuelgan proyectos, experiencia, formación y habilidades. \\
+\hline
+\rowcolor{grisTecnico}
+Portafolio & Vista pública configurable del Perfil: agrega contenido profesional con ajustes de visibilidad, SEO y, opcionalmente, protección por contraseña. \\
+\hline
+CV Studio & Editor avanzado de currículums basado en Monaco Editor, con asistente de IA Gemini multi-turno y compilación a PDF mediante LaTeX (Tectonic). \\
+\hline
+\rowcolor{grisTecnico}
+Espacio de Reclutamiento & Conjunto de funcionalidades del Perfil Reclutador: descubrimiento de talento, \textit{pipeline} Kanban de candidatos, notas privadas, \textit{leaderboard} e \textit{insights} de IA. \\
+\hline
+\end{tabularx}
+
+% -----------------------------------------------------------------------------
+\section{Referencias y Estándares Aplicados}
+\label{sec:referencias}
+
+La elaboración de este manual se rige por el cumplimiento normativo de los siguientes
+estándares de ingeniería:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{ISO/IEC/IEEE 15289:2024} — \textit{Systems and software engineering
+    — Content of life-cycle information items (documentation)}. Define la estructura,
+    el contenido mínimo y la trazabilidad de los productos de información, incluyendo
+    el historial de revisiones, los roles y la identificación documental.
+    \item \textbf{IEEE 830} — \textit{Recommended Practice for Software Requirements
+    Specifications}. Rige la especificación de requisitos del capítulo~\ref{ch:requisitos}:
+    actores, casos de uso, requisitos funcionales por dominio y requisitos no
+    funcionales (rendimiento, concurrencia, disponibilidad).
+    \item \textbf{Modelo C4 (Simon Brown)} — Notación complementaria empleada para la
+    descripción de la arquitectura por niveles (contexto, contenedores y componentes).
+\end{itemize}
+
+Los documentos contractuales y de origen de la plataforma se listan en la bibliografía:
+la convocatoria pública CPTIS-2302-2026 y su pliego de especificaciones constituyen el
+marco de requisitos originales del sistema.
+
+Para evidenciar el \textbf{cumplimiento normativo}, la tabla~\ref{tab:cumplimiento}
+mapea las cláusulas relevantes de cada estándar con el capítulo del manual que las
+satisface. Este mapeo permite a un evaluador verificar, de forma directa, que cada
+exigencia del estándar tiene un correlato concreto en el documento.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|c|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Estándar} & \textbf{Exigencia / producto de información} & \textbf{Capítulo} \\
+\hline
+ISO 15289 & Identificación y control de versiones del documento & Historial \\
+\hline
+\rowcolor{grisTecnico}
+ISO 15289 & Roles y responsabilidades sobre el artefacto & Historial \\
+\hline
+ISO 15289 & Descripción de la arquitectura del sistema & 3 \\
+\hline
+\rowcolor{grisTecnico}
+ISO 15289 & Especificación de diseño detallado & 4, 5, 6 \\
+\hline
+ISO 15289 & Información de verificación y validación & 8 \\
+\hline
+\rowcolor{grisTecnico}
+IEEE 830 & Actores y casos de uso del sistema & 2 \\
+\hline
+IEEE 830 & Requisitos funcionales específicos & 2 \\
+\hline
+\rowcolor{grisTecnico}
+IEEE 830 & Requisitos no funcionales (rendimiento, restricciones) & 2 \\
+\hline
+Modelo C4 & Vistas de contexto, contenedores y componentes & 3 \\
+\hline
+\end{tabularx}
+\label{tab:cumplimiento}
+
+% -----------------------------------------------------------------------------
+\section{Estrategia de Versionado y Trazabilidad}
+\label{sec:versionado}
+
+EthosHub adopta \textbf{Versionado Semántico} (\textit{SemVer},
+\texttt{MAYOR.MENOR.PARCHE}) tanto para el producto como para sus artefactos
+documentales. La semántica de cada segmento se define en la
+tabla~\ref{tab:semver}, y rige tanto la numeración del JAR
+(\texttt{ethoshub-0.0.1-SNAPSHOT}) como la de este manual (\texttt{1.1.0}).
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|l|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Segmento} & \textbf{Criterio de incremento} & \textbf{Ejemplo} \\
+\hline
+MAYOR & Cambios incompatibles en la API o el modelo de datos (rupturas de contrato). & 1.x $\rightarrow$ 2.0.0 \\
+\hline
+\rowcolor{grisTecnico}
+MENOR & Nueva funcionalidad retrocompatible (nuevo dominio o \textit{endpoint}). & 1.0.0 $\rightarrow$ 1.1.0 \\
+\hline
+PARCHE & Correcciones retrocompatibles (\textit{bug fixes}, ajustes de RLS). & 1.1.0 $\rightarrow$ 1.1.1 \\
+\hline
+\end{tabularx}
+\label{tab:semver}
+
+\vspace{0.4cm}
+La trazabilidad se garantiza mapeando cada incremento entre tres planos: los
+\textbf{Sprints} de desarrollo, las \textbf{Historias de Perfil} (\textit{User
+Stories}) y los \textbf{componentes de software} afectados. El siguiente diagrama
+resume dicho mapeo.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.9cm and 1.6cm]
+    % Capas
+    \node[c4persona, fill=c4Persona, minimum width=3.2cm] (sprint) {Sprint\\\scriptsize(iteración de desarrollo)};
+    \node[c4contenedor, right=of sprint, minimum width=3.2cm] (us) {Historia de Perfil\\\scriptsize(User Story)};
+    \node[c4componente, right=of us, minimum width=3.2cm] (comp) {Componente de software\\\scriptsize(paquete / módulo)};
+
+    \draw[c4flecha] (sprint) -- node[c4etiqueta, above]{planifica} (us);
+    \draw[c4flecha] (us) -- node[c4etiqueta, above]{implementa} (comp);
+
+    % Ejemplos concretos
+    \node[draw=grisISO!50, rounded corners, fill=grisTecnico, font=\sffamily\scriptsize, align=center, below=1.1cm of sprint, minimum width=3.2cm] (e1) {S1 — Identidad y Auth};
+    \node[draw=grisISO!50, rounded corners, fill=grisTecnico, font=\sffamily\scriptsize, align=center, below=1.1cm of us, minimum width=3.2cm] (e2) {LOG-001 Registro\\IDEN-003 Biografía};
+    \node[draw=grisISO!50, rounded corners, fill=grisTecnico, font=\sffamily\scriptsize, align=center, below=1.1cm of comp, minimum width=3.2cm] (e3) {\texttt{auth/}, \texttt{profile/}\\\texttt{authStore.ts}};
+
+    \draw[c4flecha, dashed] (sprint) -- (e1);
+    \draw[c4flecha, dashed] (us) -- (e2);
+    \draw[c4flecha, dashed] (comp) -- (e3);
+\end{tikzpicture}
+\caption{Cadena de trazabilidad entre Sprints, Historias de Perfil y componentes de software.}
+\label{fig:trazabilidad}
+\end{figure}
+
+Esta cadena permite responder, ante cualquier cambio, a las preguntas de auditoría
+fundamentales: \textit{¿en qué iteración se introdujo?}, \textit{¿qué necesidad de
+negocio lo motivó?} y \textit{¿qué artefactos de código lo materializan?}. La
+tabla~\ref{tab:migraciones-trazabilidad} ilustra este principio sobre las migraciones
+de base de datos, donde cada script \comando{V$n$} es trazable a un incremento
+funcional.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|c|X|l|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Migración} & \textbf{Incremento funcional} & \textbf{Dominio} \\
+\hline
+V1 & Campos geográficos en experiencias laborales & \texttt{experience} \\
+\hline
+\rowcolor{grisTecnico}
+V6 & Fases de \textit{Talent Discovery} (Kanban, notas, dashboard) & \texttt{recruiter} \\
+\hline
+V7 & Idempotencia de mensajes y RPCs de notas seguras & \texttt{chat} \\
+\hline
+\rowcolor{grisTecnico}
+V14 & Conexiones de perfil con enfoque \textit{URL-first} (+15 \textit{providers}) & \texttt{connections} \\
+\hline
+V15 & Política de SELECT para \textit{likes} de perfil & \texttt{recruiter} \\
+\hline
+\end{tabularx}
+\label{tab:migraciones-trazabilidad}

@@ -1,0 +1,382 @@
+% =============================================================================
+% 4.1 ARQUITECTURA DE LA API REST E INTERFACES
+% =============================================================================
+\section{Arquitectura de la API REST e Interfaces}
+\label{sec:api_rest}
+
+El backend expone una API REST \textbf{stateless} (sin estado de sesión en el servidor):
+la identidad del llamante viaja en cada petición como un \textit{JSON Web Token} (JWT)
+de tipo \textit{Bearer}, emitido por Supabase y \textbf{verificado} —nunca emitido— por
+el servidor. Esta decisión es la piedra angular de la escalabilidad horizontal: cualquier
+instancia del \textit{JAR} puede atender cualquier petición sin compartir estado de sesión.
+
+La superficie HTTP se compone de \textbf{25 controladores} agrupados por dominio. Cada
+uno delega la lógica en un \texttt{Service} transaccional, que a su vez accede a los datos
+mediante un \texttt{Repository} tipado con jOOQ. La figura~\ref{fig:pipeline-http}
+(pág.~\pageref{fig:pipeline-http}) anticipa el recorrido completo de una petición a través
+de la cadena de filtros y la pila de capas.
+
+\subsection{Pipeline de procesamiento de una petición HTTP}
+\label{subsec:pipeline}
+
+Antes de catalogar las rutas conviene comprender el \textbf{ciclo de vida} de una
+petición. Toda llamada atraviesa, en orden, la cadena de filtros de servlet, la cadena
+de seguridad de Spring Security, el \textit{dispatcher} de Spring MVC y, finalmente, la
+pila Controller~$\rightarrow$~Service~$\rightarrow$~Repository. La
+figura~\ref{fig:pipeline-http} formaliza este recorrido.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.9cm,
+    etapa/.style={rectangle, rounded corners=3pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize, align=center, minimum width=2.5cm, minimum height=0.85cm, inner sep=3pt},
+    filtro/.style={etapa, fill=colorAcento!25, draw=colorAcento!80!black},
+    datos/.style={etapa, fill=c4Datos!22, draw=c4Datos!70!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick, draw=grisISO}]
+    \node[etapa, fill=c4Persona!25] (cli) {Cliente\\\scriptsize SPA / Axios};
+    \node[filtro, right=of cli] (f1) {Filtros servlet\\\scriptsize Cookie · CORS · Headers};
+    \node[filtro, right=of f1] (sec) {Spring Security\\\scriptsize JWT Resource Server};
+    \node[etapa, below=0.9cm of sec] (ctrl) {\texttt{@RestController}\\\scriptsize valida \& enruta};
+    \node[etapa, left=of ctrl] (svc) {\texttt{@Service}\\\scriptsize \texttt{@Transactional}};
+    \node[datos, left=of svc] (repo) {\texttt{Repository}\\\scriptsize jOOQ DSLContext};
+    \node[datos, below=0.85cm of repo] (db) {PostgreSQL\\\scriptsize esquema \texttt{core}};
+
+    \draw[rel] (cli) -- node[c4etiqueta, above]{\scriptsize HTTP} (f1);
+    \draw[rel] (f1) -- (sec);
+    \draw[rel] (sec) -- node[c4etiqueta, right]{\scriptsize Authentication} (ctrl);
+    \draw[rel] (ctrl) -- node[c4etiqueta, above]{\scriptsize DTO} (svc);
+    \draw[rel] (svc) -- node[c4etiqueta, above]{\scriptsize SQL tipado} (repo);
+    \draw[rel] (repo) -- (db);
+    \draw[rel, dashed] (svc) to[bend left=12] node[c4etiqueta, left]{\scriptsize ApiResponse} (ctrl);
+\end{tikzpicture}
+\caption{Pipeline de procesamiento de una petición HTTP en el backend.}
+\label{fig:pipeline-http}
+\end{figure}
+
+\subsection{Enrutamiento global y convenciones de nomenclatura}
+\label{subsec:enrutamiento}
+
+Las rutas siguen un esquema \textbf{jerárquico y predecible} que distingue versiones y
+ámbitos. La tabla~\ref{tab:rutas-base} enumera las rutas base reales de cada controlador,
+extraídas directamente de sus anotaciones \comando{@RequestMapping}. Para evitar
+desbordamientos de margen, las rutas largas se presentan con quiebre automático mediante
+el formateador de rutas del documento.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.35}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.5cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Ruta base} & \sffamily\textbf{Controlador y responsabilidad} \\
+\hline
+\pathbreak{/api/auth} & \texttt{AuthController}: registro, \textit{login} y sincronización OAuth (\texttt{/oauth/sync}). \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/auth/forgot-password} & \texttt{ForgotPasswordController}: solicitud, verificación y reinicio de contraseña vía OTP. \\
+\hline
+\pathbreak{/api/v1/auth} & \texttt{SecurityController}: cambio de contraseña/correo con OTP, eliminación y exportación de cuenta. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/profile} & \texttt{ProfileController}: perfil profesional básico (bio, foto, datos de contacto). \\
+\hline
+\pathbreak{/api/projects} · \pathbreak{/api/skills} & \texttt{ProjectController}, \texttt{SkillController}: contenido profesional (rutas a nivel de método). \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/work-experiences} & \texttt{WorkExperienceController}: experiencia laboral con geolocalización (lat/lng). \\
+\hline
+\pathbreak{/api/v1/academic-records} & \texttt{AcademicRecordController}: formación académica. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/portfolio} & \texttt{PortfolioSettingsController}: ajustes del portafolio (SEO, visibilidad, contraseña). \\
+\hline
+\pathbreak{/api/v1/portfolio/public} & \texttt{PortfolioPublicController}: vista pública del portafolio (sin autenticación). \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/cv-documents} & \texttt{CvDocumentController}: CRUD de CV, asistencia IA y compilación a PDF. \\
+\hline
+\pathbreak{/api/v1/connections} & \texttt{ConnectionController}: conexiones a aplicaciones externas (Drive, etc.). \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/messages} & \texttt{ChatController}: envío idempotente de mensajes de chat. \\
+\hline
+\pathbreak{/api/v1/notifications} & \texttt{NotificationController}: notificaciones del usuario. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/preferences} & \texttt{PreferenceController}: preferencias e idioma del usuario. \\
+\hline
+\pathbreak{/api/v1/talents} & \texttt{TalentController}: descubrimiento y filtrado de talento. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/v1/recruiter} · \pathbreak{/api/v1/recruiter/profile} & \texttt{RecruiterAiController}, \texttt{RecruiterProfileController}: \textit{insights} IA y perfil de empresa. \\
+\hline
+\pathbreak{/api/uploads} & \texttt{FileUploadController}: subida de archivos a Supabase Storage. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/api/admin} · \pathbreak{/api/admin/moderation} · \pathbreak{/api/admin/profiles} · \pathbreak{/api/admin/skills} · \pathbreak{/api/admin/email} & Familia \texttt{Admin*Controller}: métricas, moderación, perfiles, \textit{skills} y correo. \\
+\hline
+\end{tabularx}
+\label{tab:rutas-base}
+
+\begin{NotaTecnica}
+Coexisten dos familias de prefijos: las rutas \textbf{legadas} (\pathbreak{/api/auth},
+\pathbreak{/api/projects}, \pathbreak{/api/skills}) y las rutas \textbf{versionadas}
+(\pathbreak{/api/v1/...}). El versionado explícito en la ruta facilita la evolución
+incompatible de contratos sin romper clientes existentes, criterio MAYOR del versionado
+semántico (SemVer) descrito en la sección~\ref{sec:versionado} (pág.~\pageref{sec:versionado}).
+\end{NotaTecnica}
+
+\subsection{Catálogo de \textit{endpoints} por dominio}
+\label{subsec:catalogo_endpoints}
+
+A nivel de método, las anotaciones \comando{@GetMapping}, \comando{@PostMapping},
+\comando{@PutMapping}, \comando{@PatchMapping} y \comando{@DeleteMapping} definen el
+verbo HTTP y el sub-recurso. La tabla~\ref{tab:endpoints} detalla los \textit{endpoints}
+de los dominios de mayor complejidad, extraídos del código fuente.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|C{1.4cm}|L{5.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Verbo} & \sffamily\textbf{Ruta} & \sffamily\textbf{Operación} \\
+\hline
+POST & \pathbreak{/api/auth/register} & Registro con rol (\texttt{PROFESSIONAL}\,/\,\texttt{RECRUITER}). \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/auth/login} & Autenticación con credenciales; devuelve token y rol. \\ \hline
+POST & \pathbreak{/api/auth/oauth/sync} & Sincroniza el perfil tras un \textit{login} OAuth de Supabase. \\ \hline
+\rowcolor{grisTecnico}
+GET & \pathbreak{/api/v1/cv-documents} & Lista los CV del usuario autenticado. \\ \hline
+POST & \pathbreak{/api/v1/cv-documents} & Crea un nuevo documento de CV. \\ \hline
+\rowcolor{grisTecnico}
+PUT & \pathbreak{/api/v1/cv-documents/\{id\}} & Actualiza el contenido LaTeX de un CV. \\ \hline
+DELETE & \pathbreak{/api/v1/cv-documents/\{id\}} & Elimina (lógicamente) un CV. \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/v1/cv-documents/ai-assist} & Asistencia IA sobre el CV (Gemini). \\ \hline
+POST & \pathbreak{/api/v1/cv-documents/compile-latex} & Compila LaTeX a PDF (\texttt{application/pdf}). \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/v1/recruiter/ai-insights} & Genera \textit{insights} de talento (4 modos IA). \\ \hline
+POST & \pathbreak{/api/v1/messages} & Envía un mensaje de chat (idempotente). \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/uploads} & Sube un archivo a Supabase Storage. \\ \hline
+GET & \pathbreak{/api/admin/metrics/overview} & Métricas agregadas para el panel admin. \\ \hline
+\rowcolor{grisTecnico}
+GET & \pathbreak{/api/admin/metrics/growth} & Serie temporal de crecimiento de usuarios. \\ \hline
+\end{tabularx}
+\label{tab:endpoints}
+
+\subsection{Envoltura de respuesta uniforme: \texorpdfstring{\texttt{ApiResponse<T>}}{ApiResponse}}
+\label{subsec:apiresponse}
+
+Todos los \textit{endpoints} —salvo la descarga binaria de PDF y la exportación de
+cuenta— devuelven el mismo envoltorio genérico \comando{ApiResponse<T>}, un
+\texttt{record} de Java que homogeneíza la forma de las respuestas y simplifica
+drásticamente el consumo desde el frontend (que así trata todas las respuestas con un
+único contrato, como se detalla en el capítulo~\ref{ch:frontend}, pág.~\pageref{ch:frontend}).
+
+\begin{lstlisting}[language=Java, caption={Envoltorio de respuesta uniforme (\texttt{shared/ApiResponse.java}).}, label={lst:apiresponse}]
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record ApiResponse<T>(
+    boolean success,      // true cuando la operacion tuvo exito
+    int status,           // codigo HTTP reflejado en el cuerpo
+    String message,       // mensaje legible para humanos
+    T data,               // payload tipado; null en errores
+    List<String> errors   // errores de validacion/negocio; null en exito
+) {
+    public static <T> ApiResponse<T> ok(T data, String message) { ... }
+    public static <T> ApiResponse<T> created(T data, String message) { ... }
+    public static <T> ApiResponse<T> badRequest(String m, List<String> e) { ... }
+    // unauthorized(401), forbidden(403), conflict(409), internalError(500)
+}
+\end{lstlisting}
+
+La anotación \comando{@JsonInclude(NON\_NULL)} omite los campos nulos en la
+serialización: una respuesta de éxito no incluye el campo \texttt{errors} y una de error
+no incluye \texttt{data}. El \textit{listado}~\ref{lst:json-ejemplo} contrasta una
+respuesta de éxito y una de error de validación para el mismo \textit{endpoint} de
+registro. La tabla~\ref{tab:apiresponse-campos} documenta cada campo.
+
+\clearpage
+\begin{lstlisting}[language=Java, caption={Cuerpos JSON de éxito (201) y de error de validación (400).}, label={lst:json-ejemplo}]
+// 201 Created - registro exitoso (sin campo "errors")
+{ "success": true, "status": 201, "message": "Cuenta creada",
+  "data": { "token": "eyJ...", "tokenType": "Bearer", "role": "PROFESSIONAL" } }
+
+// 400 Bad Request - validacion fallida (sin campo "data")
+{ "success": false, "status": 400, "message": "Datos invalidos",
+  "errors": ["email: formato invalido", "password: minimo 8 caracteres"] }
+\end{lstlisting}
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{2.2cm}|C{2.4cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Campo} & \sffamily\textbf{Tipo} & \sffamily\textbf{Semántica} \\
+\hline
+\texttt{success} & \texttt{boolean} & Indicador binario de éxito; permite al cliente bifurcar sin inspeccionar el código HTTP. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{status} & \texttt{int} & Código HTTP reflejado también en el cuerpo (redundancia útil para logs de cliente). \\ \hline
+\texttt{message} & \texttt{String} & Mensaje legible, ya localizado en español cuando procede. \\ \hline
+\rowcolor{grisTecnico}
+\texttt{data} & \texttt{T} (genérico) & Carga útil tipada; \texttt{null} en respuestas de error. \\ \hline
+\texttt{errors} & \texttt{List<String>} & Lista de errores de validación o negocio; \texttt{null} en éxito. \\ \hline
+\end{tabularx}
+\label{tab:apiresponse-campos}
+
+\subsection{Autogeneración de especificaciones (springdoc-openapi)}
+\label{subsec:openapi}
+
+La documentación de la API \textbf{no se mantiene a mano}: se genera automáticamente a
+partir de las anotaciones del código mediante \textbf{springdoc-openapi 2.7}. Las
+anotaciones \comando{@Operation}, \comando{@Tag} y \comando{@Schema}, presentes en los
+controladores y DTOs reales, alimentan una especificación OpenAPI~3 navegable y siempre
+sincronizada con la implementación.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Recurso} & \sffamily\textbf{Descripción} \\
+\hline
+\pathbreak{/swagger-ui.html} & Interfaz interactiva Swagger UI para explorar y probar los \textit{endpoints}. \\
+\hline
+\rowcolor{grisTecnico}
+\pathbreak{/v3/api-docs} & Especificación OpenAPI~3 en formato JSON, consumible por herramientas externas. \\
+\hline
+\end{tabularx}
+
+\begin{AvisoNota}
+Ambas rutas figuran en la lista \texttt{PUBLIC\_PATHS} de \texttt{SecurityConfig}
+(\pathbreak{/swagger-ui/**} y \pathbreak{/v3/api-docs/**}), por lo que la documentación
+es accesible sin autenticación en los entornos donde se habilite. El esquema de seguridad
+\texttt{bearerAuth} queda declarado para que Swagger UI permita adjuntar un JWT en las
+pruebas interactivas.
+\end{AvisoNota}
+
+\subsection{Convenciones de códigos de estado HTTP}
+\label{subsec:http_status}
+
+La API aplica los códigos de estado HTTP de forma \textbf{semántica y consistente}, lo que
+permite al cliente reaccionar de manera uniforme (véase el interceptor de respuesta del
+capítulo~\ref{ch:frontend}, sección~\ref{subsec:interceptor_resp},
+pág.~\pageref{subsec:interceptor_resp}). La tabla~\ref{tab:http-status} documenta el
+contrato de estados.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|C{1.6cm}|L{3.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Código} & \sffamily\textbf{Significado} & \sffamily\textbf{Cuándo se emite} \\
+\hline
+200 & OK & Operación de lectura o actualización exitosa. \\ \hline
+\rowcolor{grisTecnico}
+201 & Created & Creación exitosa de un recurso (\texttt{ApiResponse.created}). \\ \hline
+400 & Bad Request & Validación fallida; incluye lista de \texttt{errors} por campo. \\ \hline
+\rowcolor{grisTecnico}
+401 & Unauthorized & Token ausente, inválido o caducado. \\ \hline
+403 & Forbidden & Rol insuficiente o acceso a recurso ajeno. \\ \hline
+\rowcolor{grisTecnico}
+409 & Conflict & Violación de unicidad (p.~ej., correo ya registrado). \\ \hline
+422 & Unprocessable & Compilación LaTeX fallida en el CV Studio. \\ \hline
+\rowcolor{grisTecnico}
+429 & Too Many Requests & Límite de uso de IA alcanzado (Gemini). \\ \hline
+503 & Service Unavailable & Dependencia externa (IA) no disponible. \\ \hline
+\end{tabularx}
+\label{tab:http-status}
+
+\subsection{Superficie administrativa y métricas}
+\label{subsec:admin}
+
+La familia \texttt{Admin*Controller} expone una superficie de \textbf{observabilidad y
+moderación} accesible solo al rol \texttt{ROLE\_ADMIN}. El \comando{AdminMetricsController}
+agrega indicadores de negocio mediante consultas a la base de datos, resumidos en la
+tabla~\ref{tab:admin-metrics}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{5.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Endpoint} & \sffamily\textbf{Métrica} \\
+\hline
+\pathbreak{GET /api/admin/metrics/overview} & Resumen agregado (usuarios, perfiles, actividad). \\ \hline
+\rowcolor{grisTecnico}
+\pathbreak{GET /api/admin/metrics/growth} & Serie temporal de crecimiento de usuarios. \\ \hline
+\pathbreak{GET /api/admin/metrics/roles} & Distribución de usuarios por rol. \\ \hline
+\rowcolor{grisTecnico}
+\pathbreak{GET /api/admin/metrics/top-skills} & Ranking de habilidades más frecuentes. \\ \hline
+\pathbreak{GET /api/admin/metrics/health} & Indicadores de salud del sistema. \\ \hline
+\rowcolor{grisTecnico}
+\pathbreak{GET /api/admin/logs} & Registro de eventos para auditoría. \\ \hline
+\end{tabularx}
+\label{tab:admin-metrics}
+
+Las demás familias administrativas atienden ámbitos específicos:
+\pathbreak{/api/admin/moderation} (moderación de contenido reportado),
+\pathbreak{/api/admin/profiles} (gestión de perfiles), \pathbreak{/api/admin/skills}
+(catálogo curado de \textit{hard}/\textit{soft skills}) y \pathbreak{/api/admin/email}
+(envíos administrativos). Todas comparten la protección por rol descrita en la
+sección~\ref{sec:excepciones} (pág.~\pageref{sec:excepciones}).
+
+\subsection{Referencia de \textit{endpoints} de los dominios de contenido}
+\label{subsec:endpoints_contenido}
+
+Para completar la trazabilidad, la tabla~\ref{tab:endpoints-contenido} detalla los
+\textit{endpoints} reales de los dominios de contenido profesional —proyectos, habilidades,
+experiencia, formación y portafolio—, extraídos de las anotaciones de método de sus
+respectivos controladores.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.25}
+\fontsize{7.6}{9.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|C{1.3cm}|L{5.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Verbo} & \sffamily\textbf{Ruta} & \sffamily\textbf{Operación} \\
+\hline
+GET & \pathbreak{/api/projects/profile/\{profileId\}} & Proyectos de un perfil. \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/projects} & Crea un proyecto. \\ \hline
+DELETE & \pathbreak{/api/projects/\{projectId\}} & Elimina un proyecto. \\ \hline
+\rowcolor{grisTecnico}
+GET & \pathbreak{/api/profiles/\{profileId\}/skills/hard} & \textit{Hard skills} de un perfil. \\ \hline
+PATCH & \pathbreak{/api/skills/hard/\{skillId\}/top} & Marca una \textit{skill} como destacada. \\ \hline
+\rowcolor{grisTecnico}
+PATCH & \pathbreak{/api/profiles/\{profileId\}/skills/hard/top-order} & Reordena las \textit{skills} destacadas. \\ \hline
+PATCH & \pathbreak{/api/v1/profile/basic} & Actualiza datos básicos del perfil. \\ \hline
+\rowcolor{grisTecnico}
+PATCH & \pathbreak{/api/v1/profile/bio} & Actualiza la biografía. \\ \hline
+POST & \pathbreak{/api/v1/work-experiences} & Crea una experiencia (con lat/lng). \\ \hline
+\rowcolor{grisTecnico}
+PUT & \pathbreak{/api/v1/portfolio/settings} & Guarda los ajustes del portafolio. \\ \hline
+GET & \pathbreak{/api/v1/portfolio/export} & Exporta el portafolio. \\ \hline
+\rowcolor{grisTecnico}
+POST & \pathbreak{/api/v1/portfolio/curriculum/compile} & Compila el currículum del portafolio a PDF. \\ \hline
+\end{tabularx}
+\label{tab:endpoints-contenido}
+
+\begin{NotaTecnica}
+Las rutas de borrado de experiencia y formación incluyen el \texttt{profileId} en la URL
+(\pathbreak{/\{id\}/profile/\{profileId\}}) como verificación redundante de propiedad: el
+servidor comprueba que el recurso pertenezca a ese perfil antes de eliminarlo, una defensa
+adicional sobre la ya provista por las políticas RLS del motor
+(capítulo~\ref{ch:basedatos}, pág.~\pageref{ch:basedatos}).
+\end{NotaTecnica}

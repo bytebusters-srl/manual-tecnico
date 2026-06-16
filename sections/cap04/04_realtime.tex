@@ -1,0 +1,144 @@
+% =============================================================================
+% 4.4 ARQUITECTURA DE COMUNICACIÓN EN TIEMPO REAL
+% =============================================================================
+\section{Arquitectura de Comunicación en Tiempo Real}
+\label{sec:realtime}
+
+La plataforma ofrece chat y notificaciones \textbf{en tiempo real} sin implementar un
+servidor de \textit{WebSockets} dentro de Spring. Esta decisión —documentada como
+ADR (sección~\ref{sec:adr}, pág.~\pageref{sec:adr})— delega la entrega \textit{push} en
+\textbf{Supabase Realtime}, conservando la autoridad de validación en el backend.
+
+\subsection{Infraestructura de mensajería en tiempo real}
+\label{subsec:rt_infra}
+
+El patrón es de \textbf{escritura validada por el backend y entrega \textit{push} por el
+canal Realtime}. Combina lo mejor de dos mundos: la autoridad del servidor (validación,
+idempotencia, persistencia) y la latencia mínima de la entrega directa al cliente
+suscrito. La figura~\ref{fig:rt-arq} ilustra la topología.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=1.0cm and 1.8cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.7cm, minimum height=0.95cm, inner sep=3pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Persona!25] (emisor) {Emisor\\\scriptsize (SPA)};
+    \node[box, fill=c4Componente!45, right=of emisor] (be) {ChatController\\\scriptsize valida + persiste};
+    \node[box, fill=c4Datos!22, draw=c4Datos!70!black, right=of be] (db) {PostgreSQL\\\scriptsize core.chat\_messages};
+    \node[box, fill=colorAcento!28, draw=colorAcento!80!black, below=of db] (rt) {Supabase\\Realtime};
+    \node[box, fill=c4Persona!25, below=of emisor] (dest) {Destinatario\\\scriptsize (SPA suscrita)};
+
+    \draw[rel] (emisor) -- node[c4etiqueta, above]{\scriptsize POST /messages} (be);
+    \draw[rel] (be) -- node[c4etiqueta, above]{\scriptsize INSERT} (db);
+    \draw[rel] (db) -- node[c4etiqueta, right]{\scriptsize WAL / trigger} (rt);
+    \draw[rel] (rt) -- node[c4etiqueta, above]{\scriptsize push (sin polling)} (dest);
+\end{tikzpicture}
+\caption{Topología de mensajería: escritura validada por el backend, entrega \textit{push} por Supabase Realtime.}
+\label{fig:rt-arq}
+\end{figure}
+
+El flujo concreto de un mensaje es:
+
+\begin{enumerate}[noitemsep]
+    \item El emisor envía el mensaje por REST a \comando{POST /api/v1/messages}.
+    \item \comando{ChatController} valida que el llamante sea \textbf{participante} de la
+    conversación y persiste el mensaje con \textbf{idempotencia} (clave de cliente,
+    migración V7), evitando duplicados ante reintentos de red.
+    \item \textbf{Supabase Realtime} detecta el cambio en la tabla mediante el registro
+    de escritura anticipada (WAL) y lo entrega al destinatario suscrito, \textbf{sin
+    \textit{polling}}.
+\end{enumerate}
+
+\begin{NotaTecnica}
+La idempotencia es esencial en redes móviles inestables: si el cliente reintenta un
+\texttt{POST} cuya respuesta se perdió, el backend reconoce la clave de idempotencia y
+devuelve el mensaje ya persistido en lugar de crear un duplicado. Esta garantía se
+implementa con una restricción \texttt{UNIQUE} parcial en la base de datos
+(véase el capítulo~\ref{ch:basedatos}, pág.~\pageref{ch:basedatos}).
+\end{NotaTecnica}
+
+\subsection{Máquina de estados de una sesión de chat}
+\label{subsec:rt_estados}
+
+El ciclo de vida de un mensaje puede modelarse como una máquina de estados finitos. La
+figura~\ref{fig:fsm-chat} la representa, incluyendo el \textbf{borrado lógico} que
+preserva la integridad histórica (los mensajes no se eliminan físicamente, solo se marcan
+con \texttt{deleted\_at}).
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=1.4cm and 2.0cm,
+    estado/.style={rectangle, rounded corners=8pt, draw=c4Sistema!70!black, fill=c4Componente!30,
+        font=\sffamily\scriptsize\bfseries, align=center, minimum width=2.2cm, minimum height=0.8cm},
+    ini/.style={circle, fill=flujoInicio, minimum size=0.4cm, inner sep=0pt},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[ini] (start) {};
+    \node[estado, right=1.2cm of start] (compose) {Redactando};
+    \node[estado, right=of compose] (sent) {Enviado\\(persistido)};
+    \node[estado, right=of sent] (delivered) {Entregado\\(Realtime)};
+    \node[estado, below=of delivered] (read) {Leído};
+    \node[estado, below=of sent] (deleted) {Borrado lógico};
+
+    \draw[rel] (start) -- (compose);
+    \draw[rel] (compose) -- node[c4etiqueta, above]{POST /messages} (sent);
+    \draw[rel] (sent) -- node[c4etiqueta, above]{push} (delivered);
+    \draw[rel] (delivered) -- node[c4etiqueta, right]{visto} (read);
+    \draw[rel] (sent) -- node[c4etiqueta, left]{eliminar} (deleted);
+    \draw[rel] (delivered) -- node[c4etiqueta, above, sloped]{eliminar} (deleted);
+\end{tikzpicture}
+\caption{Máquina de estados de un mensaje de chat, con borrado lógico.}
+\label{fig:fsm-chat}
+\end{figure}
+
+Las \textbf{notificaciones} siguen un patrón análogo y asíncrono: se crean en respuesta a
+eventos (mensaje nuevo, \textit{like} recibido, etc.) y el usuario las consume vía
+\comando{GET /api/v1/notifications}, marcándolas como leídas individualmente
+(\comando{PATCH /\{id\}/read}) o en bloque (\comando{POST /read-all}). La tabla
+\texttt{notifications} dispara, a su vez, eventos Realtime que actualizan el contador del
+frontend sin recargar la página.
+
+\subsection{Notificaciones por correo asíncronas (SMTP)}
+\label{subsec:email}
+
+Más allá de las notificaciones in-app, el backend envía \textbf{correos transaccionales}
+mediante \comando{EmailService}, que usa el cliente de Spring Mail sobre SMTP
+(\texttt{smtp.gmail.com:587} con STARTTLS). Los correos cubren los eventos de la
+tabla~\ref{tab:emails}. El envío se realiza de forma que no bloquee la respuesta HTTP al
+usuario, preservando la latencia percibida.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Evento} & \sffamily\textbf{Correo enviado} \\
+\hline
+Recuperación de contraseña & Código OTP de un solo uso (sección~\ref{subsec:seq_otp}, pág.~\pageref{subsec:seq_otp}). \\ \hline
+\rowcolor{grisTecnico}
+Cambio de correo & Confirmación con enlace a \pathbreak{/api/v1/auth/confirm-email-change}. \\ \hline
+Eventos administrativos & Comunicaciones del panel de administración (\pathbreak{/api/admin/email}). \\ \hline
+\end{tabularx}
+\label{tab:emails}
+
+\subsection{Preocupaciones transversales del servidor}
+\label{subsec:transversales}
+
+Tres preocupaciones atraviesan todos los dominios del backend y se resuelven de forma
+centralizada, no por dominio:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Idempotencia}: las operaciones de escritura sensibles a reintentos (envío
+    de mensajes) aceptan una clave de idempotencia que evita duplicados, respaldada por una
+    restricción de unicidad en la base de datos.
+    \item \textbf{Registro estructurado} (\textit{logging}): cada servicio emite trazas con
+    SLF4J; los errores no recuperables se registran con \textit{stack trace} completo en el
+    servidor, mientras que al cliente solo viaja un mensaje seguro.
+    \item \textbf{Zona horaria y serialización}: Jackson se configura globalmente en UTC y
+    con \texttt{default-property-inclusion: NON\_NULL}, garantizando respuestas compactas y
+    marcas de tiempo coherentes en toda la API.
+\end{itemize}

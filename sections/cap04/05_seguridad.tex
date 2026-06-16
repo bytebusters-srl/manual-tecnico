@@ -1,0 +1,204 @@
+% =============================================================================
+% 4.5 SEGURIDAD DEL SERVIDOR Y MANEJO DE EXCEPCIONES
+% =============================================================================
+\section{Seguridad del Servidor y Manejo de Excepciones}
+\label{sec:excepciones}
+
+La seguridad del backend se articula en dos planos complementarios: la \textbf{cadena de
+filtros HTTP} que protege cada petición y la \textbf{traducción centralizada de
+excepciones} que garantiza respuestas consistentes y seguras. Esta sección documenta
+ambos, cerrando el descenso al nivel de código del componente servidor.
+
+\subsection{Configuración de filtros HTTP}
+\label{subsec:filtros}
+
+La cadena de seguridad se define en \comando{SecurityConfig} como un
+\textit{SecurityFilterChain} \textbf{stateless} \\
+(\comando{SessionCreationPolicy.STATELESS}), con CSRF deshabilitado —no hay sesiones de
+cookie tradicionales— y CORS gestionado explícitamente. Sobre la cadena estándar se
+añaden filtros propios del paquete \texttt{config/}, resumidos en la
+tabla~\ref{tab:filtros}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.0cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Filtro / Componente} & \sffamily\textbf{Función} \\
+\hline
+\texttt{CookieTokenFilter} & Permite leer el JWT desde una \textit{cookie} además del encabezado \texttt{Authorization}. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{SecurityHeadersFilter} & Añade cabeceras de seguridad HTTP (endurecimiento de respuestas: \textit{nosniff}, \textit{frame-options}). \\
+\hline
+\texttt{NoCacheFilter} & Evita el cacheo de respuestas sensibles en navegador y proxies intermedios. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{CorsConfig} & Define los orígenes permitidos (\texttt{CORS\_ALLOWED\_ORIGINS}) y los verbos/cabeceras admitidos. \\
+\hline
+\texttt{SpaFallbackFilter} & Reenvía las rutas de navegación de la SPA a \texttt{index.html} (servido por el mismo \textit{JAR}). \\
+\hline
+\end{tabularx}
+\label{tab:filtros}
+
+\paragraph{Rutas públicas.} La lista \comando{PUBLIC\_PATHS} declara los \textit{endpoints}
+accesibles sin autenticación; \\ 
+\comando{anyRequest().authenticated()} protege el resto. La
+tabla~\ref{tab:public-paths} agrupa las rutas públicas reales por categoría.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8}{9.6}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Categoría} & \sffamily\textbf{Rutas públicas} \\
+\hline
+Autenticación & \pathbreak{/api/auth/register}, \pathbreak{/api/auth/login}, \pathbreak{/api/auth/forgot-password/request}, \pathbreak{/api/auth/forgot-password/verify}, \pathbreak{/api/auth/forgot-password/reset}. \\
+\hline
+\rowcolor{grisTecnico}
+API pública & \pathbreak{/api/ping}, \pathbreak{/api/v1/portfolio/public/**}, \pathbreak{/api/v1/projects/public/**}. \\
+\hline
+Infraestructura & \pathbreak{/error}, \pathbreak{/actuator/health}, \pathbreak{/swagger-ui/**}, \pathbreak{/swagger-ui.html}, \pathbreak{/v3/api-docs/**}. \\
+\hline
+\rowcolor{grisTecnico}
+Estáticos SPA & \pathbreak{/}, \pathbreak{/index.html}, \pathbreak{/assets/**}, \pathbreak{/static/**}. \\
+\hline
+\end{tabularx}
+\label{tab:public-paths}
+
+\paragraph{Validación de firmas JWT.} El \comando{JwtDecoder} admite \textbf{dos modos}
+según la configuración disponible, descritos en la tabla~\ref{tab:jwt-modos}. Al arranque,
+\comando{warmupJwks()} pre-descarga las claves para evitar latencia en la primera
+petición protegida.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|C{3.0cm}|C{2.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Modo} & \sffamily\textbf{Algoritmo} & \sffamily\textbf{Fuente de la clave} \\
+\hline
+Secreto compartido & HS256 & \texttt{supabase.jwt-secret} (clave simétrica). \\ \hline
+\rowcolor{grisTecnico}
+JWKS remoto & RS256 / ES256 & \texttt{jwk-set-uri} (claves públicas de Supabase, cacheadas). \\ \hline
+\end{tabularx}
+\label{tab:jwt-modos}
+
+\begin{AlertaSeguridad}
+La derivación del rol se delega en \comando{AdminEmailPolicy.resolveRole()}, que
+\textbf{degrada} cualquier intento de \texttt{role=admin} proveniente de un correo no
+autorizado. Un atacante que manipule el \textit{claim} \texttt{role} de su token no puede
+escalar a administrador: la autoridad efectiva se recalcula en el servidor a partir de la
+lista de correos administrativos, nunca se confía ciegamente en el token.
+\end{AlertaSeguridad}
+
+\subsection{Jerarquía de excepciones técnicas y funcionales}
+\label{subsec:jerarquia_exc}
+
+La figura~\ref{fig:exc-jerarquia} muestra las excepciones propias y su mapeo a códigos
+HTTP. La filosofía rectora es \textbf{no devolver nunca un 500 genérico} cuando el error
+es recuperable o atribuible a una dependencia externa.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    exc/.style={rectangle, draw=c4Sistema!70!black, fill=c4Componente!30, font=\sffamily\scriptsize,
+        align=center, minimum width=3.4cm, minimum height=0.85cm, inner sep=3pt},
+    http/.style={rectangle, rounded corners=8pt, fill=colorAcento!30, draw=colorAcento!80!black,
+        font=\sffamily\scriptsize\bfseries, align=center, minimum width=2.2cm, minimum height=0.7cm},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[exc, fill=c4Componente!55] (rt) at (0,2.6) {\texttt{RuntimeException}\\\scriptsize (raíz común)};
+    \node[exc] (auth) at (-3.0,1.0) {\texttt{AuthException}\\\scriptsize (+ X-Blocked-Until)};
+    \node[exc] (ai)   at (-3.0,-0.4) {\texttt{AiServiceException}\\\scriptsize fromUpstream()};
+    \node[exc] (val)  at (-3.0,-1.8) {\texttt{MethodArgument}\\\texttt{NotValidException}};
+    \node[http] (h401) at (3.0,1.0) {401 / 4xx};
+    \node[http] (h5)   at (3.0,-0.4) {429 / 503 / 502};
+    \node[http] (h400) at (3.0,-1.8) {400 + errores};
+
+    \draw[rel] (auth.north) to[bend left=10] (rt.west);
+    \draw[rel] (ai.east) to[bend right=20] (rt.south);
+    \draw[rel, dashed] (auth) -- node[c4etiqueta, above]{mapea} (h401);
+    \draw[rel, dashed] (ai) -- node[c4etiqueta, above]{mapea} (h5);
+    \draw[rel, dashed] (val) -- node[c4etiqueta, above]{mapea} (h400);
+\end{tikzpicture}
+\caption{Jerarquía de excepciones del backend y su traducción a códigos HTTP.}
+\label{fig:exc-jerarquia}
+\end{figure}
+
+\subsection{Estructura del \texttt{GlobalExceptionHandler} centralizado}
+\label{subsec:global_handler}
+
+El \comando{@RestControllerAdvice GlobalExceptionHandler} centraliza la traducción de
+excepciones a envoltorios \comando{ApiResponse} (sección~\ref{subsec:apiresponse},
+pág.~\pageref{subsec:apiresponse}), manteniendo los controladores limpios de lógica de
+manejo de errores. La tabla~\ref{tab:handler} resume sus manejadores.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{4.6cm}|C{1.6cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Excepción capturada} & \sffamily\textbf{HTTP} & \sffamily\textbf{Tratamiento} \\
+\hline
+\texttt{MethodArgumentNotValid} & 400 & Lista de errores por campo (\texttt{campo: mensaje}). \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{AuthException} & variable & Estado propio + cabecera \texttt{X-Blocked-Until} si aplica. \\
+\hline
+\texttt{IllegalArgumentException} & 400 & \texttt{badRequest} con el mensaje. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{AuthorizationDenied} & 403 & ``Forbidden: insufficient role'' (no cae al 500). \\
+\hline
+\texttt{AiServiceException} & 429/503/502 & Estado propio del fallo \textit{upstream} de IA. \\
+\hline
+\rowcolor{grisTecnico}
+\texttt{RuntimeException} / \texttt{Exception} & 500 & Último recurso, registrado en \textit{log} con traza completa. \\
+\hline
+\end{tabularx}
+\label{tab:handler}
+
+\begin{AlertaSeguridad}
+El \textbf{orden} de los manejadores importa: \texttt{AuthorizationDeniedException} y
+\texttt{AiServiceException} se capturan \textbf{antes} del manejador genérico de
+\texttt{RuntimeException}, garantizando que las denegaciones de autorización (403) y los
+fallos de IA (429/503/502) no se enmascaren como errores 500. Un 500 espurio no solo
+degrada la experiencia, sino que puede filtrar detalles internos del \textit{stack}; por
+ello el manejador genérico es el último recurso y registra la traza solo en el servidor.
+\end{AlertaSeguridad}
+
+\subsection{Síntesis de las capas de defensa}
+\label{subsec:defensa_capas}
+
+La seguridad del backend no descansa en un único control, sino en \textbf{capas de defensa
+en profundidad} que se refuerzan mutuamente. La tabla~\ref{tab:defensa} las sintetiza, de
+la más externa a la más interna.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8.5}{10.2}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|L{3.2cm}|Y|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Capa} & \sffamily\textbf{Control} \\
+\hline
+Transporte & CORS, cabeceras de seguridad, \textit{no-cache} en respuestas sensibles. \\ \hline
+\rowcolor{grisTecnico}
+Autenticación & Verificación de JWT contra JWKS; sesión \textit{stateless}. \\ \hline
+Autorización & Roles derivados en servidor; degradación de \texttt{admin} no autorizado. \\ \hline
+\rowcolor{grisTecnico}
+Validación & Bean Validation declarativa en los DTOs de entrada. \\ \hline
+Datos & Políticas RLS en el motor (capítulo~\ref{ch:basedatos}, pág.~\pageref{ch:basedatos}). \\ \hline
+\end{tabularx}
+\label{tab:defensa}

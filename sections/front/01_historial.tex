@@ -1,0 +1,73 @@
+% =============================================================================
+% HISTORIAL DE REVISIONES Y ROLES (ISO/IEC/IEEE 15289:2024)
+% =============================================================================
+\chapter*{Historial de Revisiones y Roles}
+\addcontentsline{toc}{chapter}{Historial de Revisiones y Roles}
+\markboth{Historial de Revisiones y Roles}{}
+
+El presente documento constituye un artefacto de información del ciclo de vida del
+software conforme al estándar \textbf{ISO/IEC/IEEE 15289:2024}. Su elaboración,
+revisión y aprobación quedan trazadas en los registros siguientes, garantizando la
+integridad y la responsabilidad (\textit{accountability}) sobre cada versión emitida.
+
+\section*{Control de Versiones del Documento}
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|c|c|X|c|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Versión} & \textbf{Fecha} & \textbf{Descripción del cambio} & \textbf{Estado} \\
+\hline
+0.1.0 & 2026-04-10 & Estructura inicial del manual y definición del índice maestro alineado a ISO 15289 e IEEE 830. & Borrador \\
+\hline
+\rowcolor{grisTecnico}
+0.5.0 & 2026-05-12 & Documentación de arquitectura C4 (contexto y contenedores) y especificación de requisitos por dominio. & En revisión \\
+\hline
+1.0.0 & 2026-05-30 & Diseño detallado de backend, frontend y base de datos. Diccionario de datos y diagramas de secuencia. & Aprobado \\
+\hline
+\rowcolor{grisTecnico}
+1.1.0 & 2026-06-15 & Actualización por el flujo URL-first de conexiones, insights de IA del reclutador y políticas RLS de \textit{likes}. & Aprobado \\
+\hline
+\end{tabularx}
+
+\vspace{0.6cm}
+
+\clearpage
+\section{Roles del Equipo de Ingeniería}
+La elaboración de este manual fue responsabilidad del equipo de \textbf{Byte Busters
+S.R.L.}, con la asignación de roles y validaciones técnicas (\textit{Subject Matter
+Experts}, SME) que se detalla a continuación.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.4}
+\fontsize{9}{10.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|c|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Rol} & \textbf{Responsabilidad en el documento} & \textbf{Validación (SME)} \\
+\hline
+Scrum Master / Arquitecto & Definición del modelo C4, estrategia de empaquetado monolítico y revisión de la coherencia arquitectónica global. & Arquitectura \\
+\hline
+\rowcolor{grisTecnico}
+Líder de Backend & Diseño detallado de la API REST, jerarquía de excepciones, seguridad del servidor y persistencia jOOQ. & Backend \\
+\hline
+Líder de Frontend & Documentación de la jerarquía de componentes, enrutamiento protegido, stores Zustand y ciclo de vida de servicios. & Frontend \\
+\hline
+\rowcolor{grisTecnico}
+DBA & Diccionario de datos, integridad referencial, indexación y políticas de seguridad a nivel de fila (RLS). & Base de Datos \\
+\hline
+QA Lead & Estrategia de verificación y validación, entornos de ejecución y trazabilidad de requisitos. & V\&V \\
+\hline
+\end{tabularx}
+
+\vspace{0.4cm}
+\begin{NotaTecnica}
+Este documento es de carácter \textbf{confidencial} y está dirigido exclusivamente al
+equipo técnico de Byte Busters S.R.L. y a los evaluadores autorizados de la
+convocatoria CPTIS-2302-2026. Su identificador de trazabilidad es
+\comando{MT-ARQ-ETHOSHUB-1.1.0}.
+\end{NotaTecnica}

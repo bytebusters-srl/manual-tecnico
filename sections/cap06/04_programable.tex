@@ -1,0 +1,151 @@
+% =============================================================================
+% 6.5 LÓGICA PROGRAMABLE EN EL MOTOR DE BASE DE DATOS
+% =============================================================================
+\section{Lógica Programable en el Motor de Base de Datos}
+\label{sec:programable}
+
+EthosHub traslada una parte significativa de la lógica de negocio sensible al propio
+motor PostgreSQL, mediante \textbf{\textit{triggers}} (disparadores) y
+\textbf{funciones PL/pgSQL}. Esta decisión persigue dos objetivos: garantizar
+invariantes que no deben depender de la aplicación (auditoría, exclusividad) y operar de
+forma segura por encima de las políticas RLS mediante funciones \texttt{SECURITY DEFINER}.
+
+% -----------------------------------------------------------------------------
+\subsection{Triggers para auditoría y sincronización de eventos}
+\label{subsec:triggers}
+
+El esquema define 12 \textit{triggers}, clasificables en cuatro familias funcionales,
+resumidas en la tabla~\ref{tab:triggers}.
+
+\clearpage
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.25}
+\fontsize{8.2}{9.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\ttfamily\color{colorPrimario}\scriptsize}l|>{\scriptsize}l|X|}
+\hline
+\rowcolor{headerTabla}
+\sffamily\textbf{Trigger} & \sffamily\textbf{Tabla / Evento} & \sffamily\textbf{Función} \\
+\hline
+notify\_chat\_message & chat\_messages / AFTER INSERT & Crea una notificación para el destinatario del mensaje. \\
+\hline
+\rowcolor{grisTecnico}
+trg\_chat\_message\_timestamp & chat\_messages / AFTER INSERT & Actualiza \texttt{updated\_at} del chat (orden de conversaciones). \\
+\hline
+notify\_profile\_like & profile\_likes / AFTER INSERT & Notifica al candidato que ha recibido un \textit{like}. \\
+\hline
+\rowcolor{grisTecnico}
+trg\_cv\_documents\_updated\_at & cv\_documents / BEFORE UPDATE & Mantiene \texttt{updated\_at} en cada modificación. \\
+\hline
+trg\_profile\_connections\_updated\_at & profile\_connections / BEFORE UPDATE & Actualiza \texttt{updated\_at}. \\
+\hline
+\rowcolor{grisTecnico}
+trg\_check\_basic\_exclusivity & profiles\_basic / BEFORE INSERT & Impide que un usuario sea profesional y reclutador a la vez. \\
+\hline
+trg\_check\_company\_exclusivity & profiles\_company / BEFORE INSERT & Misma exclusividad para el perfil reclutador. \\
+\hline
+\rowcolor{grisTecnico}
+log\_profile\_basic\_events & profiles\_basic / INSERT,UPDATE & Audita altas y borrados en \texttt{admin.system\_logs}. \\
+\hline
+log\_project\_created & projects / AFTER INSERT & Registro de auditoría de creación de proyectos. \\
+\hline
+\rowcolor{grisTecnico}
+log\_portfolio\_visibility & portfolio\_settings / UPDATE & Audita cambios de publicación del portafolio. \\
+\hline
+log\_login\_blocked & login\_attempts / UPDATE & Audita bloqueos por fuerza bruta. \\
+\hline
+\rowcolor{grisTecnico}
+log\_skill\_tag\_created & global\_skill\_tags / AFTER INSERT & Audita la creación de nuevas etiquetas de habilidad. \\
+\hline
+\end{tabularx}
+\label{tab:triggers}
+
+El siguiente \textit{trigger} ejemplifica la \textbf{sincronización de eventos}: al
+insertarse un mensaje, genera automáticamente una notificación para el destinatario,
+resolviendo quién es el receptor a partir de la conversación.
+
+\begin{lstlisting}[language=SQL, caption={Trigger de notificación de mensaje (\texttt{core.notify\_chat\_message}).}]
+CREATE FUNCTION core.notify_chat_message() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'core','pg_temp' AS $$
+DECLARE v_recipient UUID;
+BEGIN
+  SELECT CASE WHEN c.basic_profile_id = NEW.sender_id THEN c.company_profile_id
+              ELSE c.basic_profile_id END
+  INTO v_recipient FROM core.chats c WHERE c.chat_id = NEW.chat_id;
+
+  IF v_recipient IS NOT NULL AND v_recipient <> NEW.sender_id THEN
+    INSERT INTO core.notifications (profile_id, type, title, message)
+    VALUES (v_recipient, 'message', 'Nuevo mensaje',
+            left(COALESCE(NULLIF(NEW.content,''), 'Has recibido un adjunto'), 120));
+  END IF;
+  RETURN NEW;
+END; $$;
+\end{lstlisting}
+
+\paragraph{Auditoría histórica SCD Tipo 2.} El esquema \comando{history} implementa
+\textbf{Slowly Changing Dimensions de Tipo 2} sobre los perfiles: cada cambio relevante
+genera una nueva versión histórica (con marcas de vigencia), preservando el rastro
+completo de la evolución de cada perfil en \texttt{history.hist\_profiles} y
+\texttt{history.hist\_profiles\_basic}.
+
+% -----------------------------------------------------------------------------
+\subsection{Procedimientos almacenados y funciones PL/pgSQL}
+\label{subsec:funciones}
+
+El esquema expone alrededor de \textbf{60 funciones}, la mayoría declaradas como
+\comando{SECURITY DEFINER} para operar de forma controlada por encima de RLS. Se
+agrupan funcionalmente como muestra la tabla~\ref{tab:rpcs}.
+
+\vspace{0.2cm}
+\noindent
+\renewcommand{\arraystretch}{1.25}
+\fontsize{8.2}{9.8}\selectfont\sffamily
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{colorPrimario}}l|X|}
+\hline
+\rowcolor{headerTabla}
+\textbf{Grupo} & \textbf{Funciones representativas (RPC)} \\
+\hline
+Chat & \texttt{send\_message}, \texttt{get\_messages}, \texttt{mark\_messages\_read}, \texttt{upsert\_chat}, \texttt{delete\_chat}, \texttt{get\_chat\_list}, \texttt{get\_unread\_count}. \\
+\hline
+\rowcolor{grisTecnico}
+Pipeline / Likes & \texttt{add\_like}, \texttt{remove\_like}, \texttt{update\_like\_stage}, \texttt{get\_company\_likes}, \texttt{has\_liked\_profile}. \\
+\hline
+Talento & \texttt{record\_talent\_view}, \texttt{get\_recent\_talent\_views}, \texttt{get\_explore\_portfolios}, \texttt{get\_profile\_likes\_count}. \\
+\hline
+\rowcolor{grisTecnico}
+Seguridad & \texttt{check\_login\_block}, \texttt{record\_login\_failure}, \texttt{clear\_login\_attempts}, \texttt{increment\_otp\_attempt}, \texttt{cleanup\_expired\_codes}. \\
+\hline
+Identidad & \texttt{handle\_new\_user}, \texttt{delete\_profile\_cascade}, \texttt{sync\_auth\_email\_to\_profiles}, \texttt{sync\_oauth\_identity\_to\_connections}. \\
+\hline
+\rowcolor{grisTecnico}
+Administración & \texttt{admin.search\_profiles}, \texttt{admin.get\_global\_metrics}, \texttt{admin.soft\_delete\_profile}, \texttt{admin.restore\_profile}, \texttt{admin.log\_event}. \\
+\hline
+\end{tabularx}
+\label{tab:rpcs}
+
+La función \comando{record\_login\_failure} ilustra la lógica anti fuerza bruta
+ejecutada de forma atómica en el motor: incrementa el contador, reinicia si el bloqueo
+expiró y aplica un bloqueo de 15 minutos al quinto fallo, todo en una sola sentencia
+\texttt{UPSERT}.
+
+\begin{lstlisting}[language=SQL, caption={Función anti fuerza bruta (\texttt{core.record\_login\_failure}, fragmento).}]
+INSERT INTO core.login_attempts (email, failed_count, last_attempt)
+VALUES (lower(p_email), 1, now())
+ON CONFLICT (lower(email)) DO UPDATE
+  SET failed_count = CASE
+        WHEN login_attempts.blocked_until < now() THEN 1          -- bloqueo expirado: reinicia
+        ELSE login_attempts.failed_count + 1 END,
+      blocked_until = CASE
+        WHEN (...failed_count + 1) >= 5                            -- 5 intentos
+        THEN now() + '15 minutes'::INTERVAL ELSE NULL END,
+      last_attempt = now()
+RETURNING *;
+\end{lstlisting}
+
+\begin{AlertaSeguridad}
+El uso de \comando{SECURITY DEFINER} es potente pero delicado: estas funciones se
+ejecutan con los privilegios de su propietario, eludiendo RLS. Por ello \textbf{fijan
+explícitamente} \comando{SET search\_path} (p.~ej. \texttt{'core','pg\_temp'}) para
+prevenir ataques de secuestro de \textit{search path}, y validan internamente la
+pertenencia del llamante antes de operar sobre datos ajenos.
+\end{AlertaSeguridad}

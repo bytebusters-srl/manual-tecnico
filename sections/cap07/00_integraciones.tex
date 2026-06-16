@@ -1,0 +1,61 @@
+% =============================================================================
+% CAPÍTULO 7 — INTEGRACIONES Y CONSUMO DE SERVICIOS EXTERNOS
+% Archivo maestro del capítulo. Importa las secciones desde sections/cap07/.
+% =============================================================================
+\chapter{Integraciones y Consumo de Servicios Externos}
+\label{ch:integraciones}
+\resumenCapitulo{Este capítulo documenta las tres integraciones externas de la plataforma:
+Supabase (autenticación, funciones RPC y canales de tiempo real), Google Gemini (motor de
+IA generativa) y Google Drive con su infraestructura Picker, detallando el contrato de
+cada frontera, sus \textit{payloads}, sus credenciales y sus planes de contingencia.}
+
+EthosHub no es un sistema cerrado: delega capacidades especializadas en \textbf{tres
+proveedores externos} cuya integración define buena parte del valor de la plataforma. Este
+capítulo documenta —con el detalle que la norma ISO/IEC/IEEE~15289:2024 exige para el ítem
+de información de \textit{interfaces externas}— cómo se consume cada servicio, qué datos
+cruzan cada frontera y cómo se gobiernan los fallos.
+
+Los capítulos~\ref{ch:backend} (pág.~\pageref{ch:backend}) y~\ref{ch:frontend}
+(pág.~\pageref{ch:frontend}) ya describieron \textit{dónde} viven estas integraciones en el
+código; este capítulo se centra en el \textbf{contrato de cada frontera}: el protocolo, los
+\textit{payloads}, las claves y los planes de contingencia. Las tres integraciones son:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Supabase} (sección~\ref{sec:int_supabase}, pág.~\pageref{sec:int_supabase}):
+    autenticación, base de datos, funciones RPC y canales de tiempo real.
+    \item \textbf{Google Gemini} (sección~\ref{sec:int_gemini}, pág.~\pageref{sec:int_gemini}):
+    motor de IA generativa para CV e \textit{insights} de reclutamiento.
+    \item \textbf{Google Drive + Picker} (sección~\ref{sec:int_drive},
+    pág.~\pageref{sec:int_drive}): importación de archivos desde el almacenamiento del usuario.
+\end{itemize}
+
+La figura~\ref{fig:int-mapa} ofrece un mapa general de las integraciones, distinguiendo
+las que consume el \textbf{cliente} directamente de las que median por el \textbf{backend}.
+
+\vspace{0.3cm}
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=0.9cm and 1.7cm,
+    box/.style={rectangle, rounded corners=3pt, draw, font=\sffamily\scriptsize, align=center,
+        minimum width=2.6cm, minimum height=0.9cm, inner sep=3pt},
+    ext/.style={box, fill=c4Externo!30, draw=c4Externo!70!black},
+    rel/.style={-{Stealth[length=2mm]}, semithick}]
+    \node[box, fill=c4Persona!25] (cli) {Cliente SPA};
+    \node[box, fill=c4Componente!45, below=of cli] (be) {Backend\\Spring};
+    \node[ext, right=2.2cm of cli] (sb) {Supabase\\\scriptsize Auth · DB · RPC · RT};
+    \node[ext, right=2.2cm of be] (gem) {Google\\Gemini};
+    \node[ext, below=of gem] (drive) {Google\\Drive + Picker};
+
+    \draw[rel] (cli) -- node[c4etiqueta, above]{\scriptsize anon key + JWT} (sb);
+    \draw[rel] (cli) to[bend right=12] node[c4etiqueta, right]{\scriptsize OAuth picker} (drive);
+    \draw[rel] (be) -- node[c4etiqueta, above]{\scriptsize service\_role} (sb);
+    \draw[rel] (be) -- node[c4etiqueta, above]{\scriptsize API key} (gem);
+\end{tikzpicture}
+\caption{Mapa general de integraciones externas: vías directas del cliente y mediadas por el backend.}
+\label{fig:int-mapa}
+\end{figure}
+
+% --- Secciones del capítulo (orden del índice instrucciones.md §7) ---
+\input{sections/cap07/01_supabase}    % 7.1 Integración con Supabase
+\input{sections/cap07/02_gemini}      % 7.2 Integración con Google Gemini
+\input{sections/cap07/03_drive}       % 7.3 Integración con Google Drive + Picker
