@@ -3,13 +3,15 @@
 % =============================================================================
 \chapter{Diseño Técnico y Detallado de la Base de Datos}
 \label{ch:basedatos}
-\resumenCapitulo{Este capítulo expone en su totalidad el motor de datos PostgreSQL sobre
-Supabase: los esquemas lógicos y el diagrama entidad-relación, el diccionario de datos
+\resumenCapitulo{Este capítulo expone en su totalidad el motor de datos PostgreSQL~15.10
+autoalojado en el servidor TIS (administrado vía phpPgAdmin): los esquemas lógicos y el diagrama entidad-relación, el diccionario de datos
 exhaustivo por columna, la integridad referencial, la estrategia de indexación, la lógica
 programable (\textit{triggers}, funciones y RPC), la concurrencia y las políticas RLS.}
 
 Este capítulo expone en su totalidad el diseño de la base de datos de EthosHub,
-alojada en \textbf{Supabase} sobre \textbf{PostgreSQL 17.6}. Constituye el documento de
+autoalojada en el \textbf{servidor TIS de la UMSS} sobre \textbf{PostgreSQL 15.10} y
+administrada mediante el cliente web \textbf{phpPgAdmin}
+(\url{http://bytebusters.tis.cs.umss.edu.bo/phppgadmin}). Constituye el documento de
 referencia para el administrador de bases de datos (DBA): se documenta la arquitectura
 de almacenamiento, el modelo entidad-relación, el diccionario de datos exhaustivo
 columna por columna, la integridad referencial, la estrategia de indexación, la lógica

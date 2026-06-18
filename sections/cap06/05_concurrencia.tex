@@ -33,7 +33,7 @@ Idempotencia & El índice único parcial de \texttt{chat\_messages} evita duplic
 Operaciones atómicas & \texttt{UPSERT} (\texttt{INSERT ... ON CONFLICT}) en \texttt{add\_like}, \texttt{record\_login\_failure}, \texttt{upsert\_chat}. \\
 \hline
 \rowcolor{grisTecnico}
-Pooling & El acceso pasa por el \textit{pooler} de Supabase, acotando conexiones simultáneas (RNF-CONC-01). \\
+Pooling & El acceso pasa por un \textit{pool} de conexiones, acotando conexiones simultáneas (RNF-CONC-01). \\
 \hline
 \end{tabularx}
 \label{tab:aislamiento}

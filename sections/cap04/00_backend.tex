@@ -1,5 +1,5 @@
 % =============================================================================
-% CAPÍTULO 4 — DISEÑO DETALLADO DEL BACKEND (ethoshubB)
+% CAPÍTULO 4 — DISEÑO DETALLADO DEL BACKEND (EthosBack)
 % Archivo maestro del capítulo. Importa las secciones desde sections/cap04/.
 % =============================================================================
 \chapter{Diseño Detallado del Backend (EthosHub)}
@@ -10,7 +10,7 @@ secuencias de las operaciones clave (autenticación, IA y CV), la comunicación 
 real, la seguridad y el manejo de excepciones, y el empaquetado y despliegue.}
 
 Este capítulo desciende al nivel de \textbf{código} del Modelo C4 para el componente
-servidor \texttt{ethoshubB}. Mientras el capítulo~\ref{ch:arquitectura} (pág.~\pageref{ch:arquitectura})
+servidor \texttt{EthosBack}. Mientras el capítulo~\ref{ch:arquitectura} (pág.~\pageref{ch:arquitectura})
 describió la arquitectura global, aquí se documenta el diseño interno con la granularidad
 que exige la norma ISO/IEC/IEEE~15289:2024 para el ítem de información \textit{Software
 Design Description}: la organización de la API REST y sus convenciones; la jerarquía de
@@ -21,7 +21,7 @@ del servidor con su modelo centralizado de manejo de excepciones.
 
 Todo el contenido es \textbf{trazable} a paquetes y clases reales del repositorio. El
 backend se ejecuta sobre \textbf{Java~17} y \textbf{Spring~Boot~4.0.x}, persiste mediante
-\textbf{jOOQ} sobre PostgreSQL~17.6 (Supabase) y se empaqueta como un único \textit{JAR}
+\textbf{jOOQ} sobre PostgreSQL~15.10 (servidor TIS) y se empaqueta como un único \textit{JAR}
 monolítico que sirve además el \textit{bundle} estático del frontend.
 
 \begin{NotaTecnica}

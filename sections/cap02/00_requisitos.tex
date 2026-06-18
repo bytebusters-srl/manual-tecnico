@@ -331,7 +331,7 @@ sin un mecanismo de soporte concreto.
     \node[rnf] (disp) at (0,-1) {Disponibilidad};
 
     \node[mec, right=of perf] (m1) {Índices B-Tree + \textit{pre-warm} de Tectonic};
-    \node[mec, right=of conc] (m2) {Pooler de Supabase + idempotencia (V7)};
+    \node[mec, right=of conc] (m2) {Pool de conexiones + idempotencia (V7)};
     \node[mec, right=of disp] (m3) {\texttt{AiServiceException} + Actuator};
 
     \draw[c4flecha] (perf) -- node[c4etiqueta, above]{se apoya en} (m1);
@@ -355,7 +355,7 @@ RNF-PERF-03 & La entrega de mensajes de chat y notificaciones debe percibirse en
 \label{subsec:rnf_concurrencia}
 
 \begin{TablaRF}
-RNF-CONC-01 & El acceso a PostgreSQL se realiza vía el \textit{pooler} de Supabase, acotando el número de conexiones simultáneas del backend. & Alta \\ \hline
+RNF-CONC-01 & El acceso a PostgreSQL~15.10 se realiza mediante un \textit{pool} de conexiones, acotando el número de conexiones simultáneas del backend. & Alta \\ \hline
 RNF-CONC-02 & La idempotencia de mensajes (migración V7) evita duplicados ante reintentos concurrentes en el chat. & Alta \\ \hline
 RNF-CONC-03 & La sesión del cliente se aísla por pestaña (\textit{sessionStorage}), permitiendo múltiples sesiones simultáneas sin interferencia. & Media \\ \hline
 \end{TablaRF}

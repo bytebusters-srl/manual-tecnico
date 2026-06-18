@@ -112,7 +112,7 @@ de interacción, la criticidad y la estrategia de mitigación ante su indisponib
 Supabase Auth & HTTPS / JWKS & Dura & \textit{Warmup} de JWKS al arranque; rechazo controlado (401) si falla la validación. \\
 \hline
 \rowcolor{grisTecnico}
-PostgreSQL (Supabase) & JDBC / \textit{pooler} & Dura & Reintentos del \textit{pooler}; sin BD el sistema no opera (por diseño). \\
+PostgreSQL 15.10 (servidor TIS) & JDBC & Dura & Reintentos del \textit{pool} de conexiones; sin BD el sistema no opera (por diseño). \\
 \hline
 Supabase Realtime & WebSocket & Media & Degradación a recarga manual de mensajes/notificaciones. \\
 \hline
@@ -151,7 +151,7 @@ API REST desde el mismo JAR.
         {\hspace{2pt}JAR monolítico EthosHub};
 
     % Almacén de datos
-    \node[c4datos, right=2.6cm of api] (db) {PostgreSQL\\\scriptsize esquema \texttt{core}\\\scriptsize(Supabase)};
+    \node[c4datos, right=2.6cm of api] (db) {PostgreSQL 15.10\\\scriptsize esquema \texttt{core}\\\scriptsize(servidor TIS)};
 
     % Externos
     \node[c4externo, right=2.4cm of spa] (auth) {Supabase Auth\\\scriptsize JWKS};
@@ -211,7 +211,7 @@ acceso del lado del servidor.
 \section{Diagrama de Componentes (Nivel 3)}
 \label{sec:c4_componentes}
 
-\subsection{Componentes internos de \texttt{ethoshubB}}
+\subsection{Componentes internos de \texttt{EthosBack}}
 \label{subsec:comp_backend}
 
 El backend sigue un \textbf{patrón por capas organizado por \textit{feature}}
@@ -286,7 +286,7 @@ config / shared & Seguridad, CORS, filtros, \texttt{RestClient}; \texttt{ApiResp
 \end{tabularx}
 \label{tab:modulos-backend}
 
-\subsection{Componentes internos de \texttt{ethoshubF}}
+\subsection{Componentes internos de \texttt{EthosFront}}
 \label{subsec:comp_frontend}
 
 El frontend adopta una organización \textbf{\textit{feature-first}} con capas

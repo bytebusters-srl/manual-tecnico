@@ -58,7 +58,7 @@ El documento está dirigido a tres perfiles profesionales:
     diagramas de clases, secuencias de operaciones clave, contratos de la API REST y
     la organización del código por \textit{feature}.
     \item \textbf{Administradores de bases de datos (DBA):} responsables del esquema
-    \texttt{core} sobre PostgreSQL/Supabase. Encontrarán el diccionario de datos
+    \texttt{core} sobre PostgreSQL~15.10 (servidor TIS, phpPgAdmin). Encontrarán el diccionario de datos
     exhaustivo, las políticas de integridad referencial, la estrategia de indexación
     y las políticas de seguridad a nivel de fila (RLS).
     \item \textbf{Personal de operaciones (DevOps):} responsable del empaquetado, el
@@ -121,9 +121,11 @@ experiencias complementarias sobre un mismo dominio de datos:
 \end{enumerate}
 
 El alcance técnico documentado cubre el \textbf{monolito empaquetado} que integra el
-backend (\texttt{ethoshubB}, Spring Boot) y el frontend (\texttt{ethoshubF}, React SPA)
-en un único artefacto ejecutable, junto con sus dependencias externas: \textbf{Supabase}
-(autenticación, base de datos PostgreSQL y comunicación en tiempo real),
+backend (\texttt{EthosBack}, Spring Boot) y el frontend (\texttt{EthosFront}, React SPA)
+en un único artefacto ejecutable, desplegado en el dominio
+\url{http://bytebusters.tis.cs.umss.edu.bo}, junto con sus dependencias externas: una
+\textbf{base de datos PostgreSQL~15.10} autoalojada en el servidor TIS (administrada vía
+phpPgAdmin), \textbf{Supabase} (autenticación y comunicación en tiempo real),
 \textbf{Google Gemini} (servicios de IA) y \textbf{Google Drive} (importación de
 archivos).
 
@@ -149,7 +151,7 @@ Framework (BE) & Spring Boot 4.0.x & Web MVC, Security (Resource Server), Valida
 Persistencia & jOOQ + Spring JDBC & SQL tipado contra el esquema \texttt{core}. \\
 \hline
 \rowcolor{grisTecnico}
-Base de datos & PostgreSQL (Supabase) & Almacenamiento relacional con RLS y RPCs \texttt{SECURITY DEFINER}. \\
+Base de datos & PostgreSQL 15.10 (servidor TIS) & Almacenamiento relacional con RLS y RPCs \texttt{SECURITY DEFINER}; administrada vía phpPgAdmin. \\
 \hline
 Lenguaje (FE) & TypeScript 5.3 (\textit{strict}) & Tipado estático de la SPA. \\
 \hline
@@ -193,7 +195,7 @@ alcance del sistema.
     \node[dentro] (d5) at (-3.2,-0.3) {Orquestación de IA y exportación de CV};
 
     \node[fuera] (f1) at (3.2,3.3) {Emisión de credenciales (Supabase Auth)};
-    \node[fuera] (f2) at (3.2,2.4) {Hosting de la base de datos (Supabase)};
+    \node[fuera] (f2) at (3.2,2.4) {Hosting de la base de datos (servidor TIS — PostgreSQL 15.10)};
     \node[fuera] (f3) at (3.2,1.5) {Modelos de IA (Google Gemini)};
     \node[fuera] (f4) at (3.2,0.6) {Almacenamiento de archivos (Drive/Supabase)};
     \node[fuera] (f5) at (3.2,-0.3) {Entrega de correo (SMTP Gmail)};
